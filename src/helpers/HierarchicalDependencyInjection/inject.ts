@@ -1,18 +1,19 @@
-/* eslint-disable @typescript-eslint/ban-types */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { Inject, Injection } from '../types';
 
+/**
+ * Parameter decorator that marks a constructor argument for dependency injection.
+ * Stores injection metadata (key + predicate) on the class so `injectance` can
+ * resolve the dependency from the Container at instantiation time.
+ */
 export const inject = ({ key, predicate }: Inject) => {
-  return (target: any, propertyKey: string | symbol | undefined, parameterIndex: number) => {
-    const keyInject: string = key;
+  return (target: any, _propertyKey: string | symbol | undefined, parameterIndex: number) => {
     const injection: Injection = {
       index: parameterIndex,
-      key: keyInject,
+      key,
       predicate,
     };
     const existingInjections: Injection[] = target.injections || [];
-    // create property 'injections' holding all constructor parameters, which should be injected
+    // Accumulates all @inject()-annotated parameters under target.injections.
     Object.defineProperty(target, 'injections', {
       enumerable: false,
       configurable: true,

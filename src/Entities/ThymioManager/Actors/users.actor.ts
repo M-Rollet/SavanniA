@@ -1,17 +1,16 @@
-import { Actor, Container, Observable } from '../../../helpers';
-import { Activity, Robot } from '../Model';
+import { Actor, Container } from '../../../helpers';
+import { Activity } from '../Model';
 import type IThymioIA from '../Model/thymioIA.model';
 import type { Users } from '../Model/users.model';
+import type { ThymioStatus } from '../Model/thymio.model';
 
 @Actor({ key: 'User', predicate: ['AllUser'] })
 export class AllUser implements Users {
-  captors: Observable<{ [uuid: string]: number[] }>;
-  getRobotsUuids;
-  takeControl;
-  predict;
-  trainModel;
-  emitAction;
-  emitMotorEvent;
+  getRobotsUuids: () => Promise<string[]>;
+  getRobotStatus: (uuid: string) => ThymioStatus | null;
+  takeControl: Users['takeControl'];
+  setVariables: Users['setVariables'];
+  identify: Users['identify'];
 
   constructor({ activity, hosts }: { activity: Activity; hosts: string[] }) {
     const thymioIA = Container.factoryFromInjectable<IThymioIA>('BOUNDED_CONTEXT', 'ThymioIA', [], { activity, hosts });
@@ -19,12 +18,10 @@ export class AllUser implements Users {
       throw new Error('BOUNDED_CONTEXT:ThymioIA not found');
     }
 
-    this.captors = thymioIA.captors;
     this.getRobotsUuids = thymioIA.getRobotsUuids;
+    this.getRobotStatus = thymioIA.getRobotStatus;
     this.takeControl = thymioIA.takeControl;
-    this.predict = thymioIA.predict;
-    this.trainModel = thymioIA.trainModel;
-    this.emitAction = thymioIA.emitAction;
-    this.emitMotorEvent = thymioIA.emitMotorEvent;
+    this.setVariables = thymioIA.setVariables;
+    this.identify = thymioIA.identify;
   }
 }

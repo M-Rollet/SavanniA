@@ -1,0 +1,117 @@
+/* --robot-color is set as a CSS custom property on the ReactFlow wrapper
+   in DecisionTree.tsx and inherited by all node children. */
+
+/* ── Opacity transition (shared) ─────────────────────────── */
+.node,
+.leaf-node {
+  transition: opacity 0.2s;
+}
+
+/* ── Handle defaults (shared) ────────────────────────────── */
+.node .react-flow__handle,
+.leaf-node .react-flow__handle,
+.root-node .react-flow__handle {
+  background: #929292 !important; /* slate-300 */
+  border: 2px solid white !important;
+}
+
+/* ── Highlighted  ─────────────────────── */
+.root-node[data-highlighted] .node-card,
+.node[data-highlighted] .node-card,
+.leaf-node[data-highlighted] .node-card {
+  border-color: var(--robot-color); /* amber-400 */
+  box-shadow: 0 0 0 3px var(--robot-color); /* amber-300 ring */
+}
+
+/* ── Add-child buttons ───────────────────────────────────── */
+.add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  color: #4d4d4d;
+  border: 1px dashed #858585;
+  border-radius: 0.5rem;
+  padding: 4px 8px;
+  background: white;
+  transition: color 0.15s, border-color 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.add-btn:hover {
+  color: black;
+  border: 1px solid #858585;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Root node
+   ══════════════════════════════════════════════════════════ */
+.root-node .node-card {
+  border-color: var(--robot-color);
+}
+.root-node .robot-label {
+  color: var(--robot-color);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Nodes
+   ══════════════════════════════════════════════════════════ */
+.node[data-testing]:not([data-on-path]) {
+  opacity: 0.3;
+}
+
+/* Card border */
+.node:not([data-highlighted]) .node-card {
+  border-color: oklch(44.6% 0.03 256.802);
+} /* gray-600 */
+
+.node[data-testing][data-on-path]:not([data-highlighted]) .node-card {
+  border-color: var(--robot-color);
+}
+
+/* Handles on active path */
+.node[data-testing][data-on-path] .react-flow__handle {
+  background: var(--robot-color) !important;
+}
+
+/* Yes / No tabs */
+.node-tab-yes,
+.node-tab-no {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: default;
+} /* gray-50 / gray-400 */
+
+.node[data-active-handle='yes'] .node-tab-yes,
+.node[data-active-handle='no'] .node-tab-no {
+  background-color: var(--robot-color);
+  color: white;
+}
+
+/* Decision buttons */
+.decision-btn {
+  background: #f9fafb;
+  color: #6b7280;
+  border-color: #f3f4f6;
+  cursor: pointer;
+}
+
+.node:not([data-testing]) .decision-btn:not([data-selected]):hover {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+.decision-btn[data-selected] {
+  background: #111827;
+  border-color: #111827;
+  color: white;
+  font-weight: 500;
+}
+
+.node[data-testing][data-on-path] .decision-btn[data-selected] {
+  background-color: var(--robot-color);
+  border-color: var(--robot-color);
+  color: white;
+}

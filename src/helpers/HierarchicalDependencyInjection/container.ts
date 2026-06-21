@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-types */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { Injectable, Injectables, InjectedInstance, Instantiated, Predicate, Role } from '../types';
 import { samePredicate } from '../utils';
 
@@ -19,14 +16,17 @@ export class Container {
     ACTOR: new Map(),
   };
 
+  /** Returns the map of all currently instantiated singletons, keyed by role. */
   static instantiatedSingleton = () => {
     return this.instantiated;
   };
 
+  /** Returns the map of all registered injectable constructors, keyed by role. */
   static instantiates = () => {
     return this.injectables;
   };
 
+  /** Registers an injectable constructor so it can later be resolved by role + key + predicate. */
   static addInjectable = (injectable: Injectable) => {
     const role = injectable.role;
     const key = injectable.key;
@@ -38,14 +38,18 @@ export class Container {
     Container.injectables[role].get(key)?.push(injectable);
   };
 
+  /**
+   * Creates a fresh (non-singleton) instance of a registered injectable.
+   * Throws if no matching injectable is found.
+   */
   static factoryFromInjectable = <T>(role: Role, key: string, predicate: Predicate, args?: Object): T | undefined => {
-    const injectable = Container.injectables[role].get(key)?.find((i) => samePredicate(i.predicate, predicate));
+    const injectable = Container.injectables[role].get(key)?.find(i => samePredicate(i.predicate, predicate));
 
     if (!injectable) {
       console.error(`No injectable found for ${role} ${key} with predicate ${predicate} because it is not registered`);
 
       throw new Error(
-        `No injectable found for ${role} ${key} with predicate ${predicate} because it is not registered`,
+        `No injectable found for ${role} ${key} with predicate ${predicate} because it is not registered`
       );
     }
 
@@ -54,6 +58,10 @@ export class Container {
     return newObjectCasted;
   };
 
+  /**
+   * Instantiates an injectable and stores it as a singleton.
+   * If an instance with the same predicate already exists, returns the cached one.
+   */
   static instantiateInjectable = (injectable: Injectable, args?: Object) => {
     try {
       const { role, key } = injectable;
@@ -86,10 +94,14 @@ export class Container {
     }
   };
 
-  static get = (role: Role, key: string, abictraryPredicate: Predicate = [], args?: Object): any => {
+  /**
+   * Retrieves (or lazily creates) a singleton instance matching role + key + predicate.
+   * Returns undefined if no matching injectable is registered.
+   */
+  static get = (role: Role, key: string, arbitraryPredicate: Predicate = [], args?: Object): any => {
     try {
       const instances = Container.instantiated[role].get(key);
-      const alreadyExists = instances?.find(({ predicate = [] }) => samePredicate(predicate, abictraryPredicate));
+      const alreadyExists = instances?.find(({ predicate = [] }) => samePredicate(predicate, arbitraryPredicate));
 
       if (alreadyExists) {
         return alreadyExists.instance;
@@ -97,7 +109,7 @@ export class Container {
 
       const injectable: Injectable | undefined = Container.injectables[role]
         .get(key)
-        ?.find(({ predicate = [] }) => samePredicate(predicate, abictraryPredicate));
+        ?.find(({ predicate = [] }) => samePredicate(predicate, arbitraryPredicate));
 
       if (injectable) {
         return Container.instantiateInjectable(injectable, args);

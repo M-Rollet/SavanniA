@@ -1,12 +1,19 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-shadow */
 
 import type { Injection, LayerOption, Predicate, Role } from '../types';
 
 import { Container } from './container';
 
+/**
+ * Replaces a class constructor with a DI-aware wrapper.
+ * On instantiation the wrapper reads the `@inject()` metadata stored by the parameter
+ * decorators, resolves each dependency from the Container (searching the allowed `roles`
+ * in order), then calls the original constructor with the resolved arguments prepended.
+ *
+ * Also registers the class as an injectable in the Container so it can itself be resolved
+ * by other layers.
+ */
 export const injectance = (constructor: any, options: LayerOption, role: Role, roles: Role[]) => {
-  // replacing the original constructor with a new one that provides the injections from the Container
   ((constructor: any) => {
     const key: string = options.key;
     const predicate: Predicate = options?.predicate ?? [];
@@ -23,8 +30,6 @@ export const injectance = (constructor: any, options: LayerOption, role: Role, r
 
   return class extends constructor {
     constructor(...args: any[]) {
-
-      // get injections from class; previously created by @inject()
       const injections = constructor.injections as Injection[];
       const injectedArgs: any[] =
         injections?.map(({ key, predicate = options?.predicate ?? [] }) => {
@@ -45,7 +50,6 @@ export const injectance = (constructor: any, options: LayerOption, role: Role, r
           console.error(`injection ${key} not exist with predicate ${predicate?.join(',')}`);
           return [];
         }) ?? [];
-      // call original constructor with injected arguments
       super(...injectedArgs, ...args);
     }
   };
