@@ -11,10 +11,10 @@ export type LeafNodeData = {
   onDelete: (nodeId: string) => void;
 };
 
-const NODE_WIDTH = 220;
+export const NODE_WIDTH = 200;
 
 const OPTIONS = {
-  true: { label: "Prêt pour l'expédition", icon: CheckShape },
+  true: { label: "Prêt à partir", icon: CheckShape },
   false: { label: 'À réparer', icon: Ban },
 } as const;
 
@@ -39,7 +39,7 @@ export function LeafNode({ id, data }: NodeProps) {
           onMouseDown={stopProp}
           className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-white border border-gray-200 hover:bg-red-50 hover:border-red-300 flex items-center justify-center z-20 transition-colors shadow-sm text-gray-400 hover:text-red-500"
         >
-          <Xmark width={10} height={10} />
+          <Xmark/>
         </button>
       )}
 
@@ -60,7 +60,7 @@ export function LeafNode({ id, data }: NodeProps) {
                 onClick={() => !testing && onChangeDecision(id, value)}
                 onMouseDown={stopProp}
                 disabled={testing}
-                className="decision-btn w-full text-sm px-3 py-2 rounded-lg border transition-all flex items-center gap-2"
+                className="decision-btn w-full text-base px-3 py-2 rounded-lg border transition-all flex items-center gap-2"
               >
                 <Icon width={14} height={14} className="shrink-0" />
                 {label}

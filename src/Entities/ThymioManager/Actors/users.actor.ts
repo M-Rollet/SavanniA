@@ -10,6 +10,7 @@ export class AllUser implements Users {
   getRobotStatus: (uuid: string) => ThymioStatus | null;
   takeControl: Users['takeControl'];
   setVariables: Users['setVariables'];
+  emitEvent!: Users['emitEvent'];
   identify: Users['identify'];
 
   constructor({ activity, hosts }: { activity: Activity; hosts: string[] }) {
@@ -22,6 +23,7 @@ export class AllUser implements Users {
     this.getRobotStatus = thymioIA.getRobotStatus;
     this.takeControl = thymioIA.takeControl;
     this.setVariables = thymioIA.setVariables;
+    this.emitEvent = thymioIA.emitEvent;
     this.identify = thymioIA.identify;
   }
 }

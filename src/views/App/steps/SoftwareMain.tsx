@@ -2,41 +2,47 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } fr
 import { ReactFlowProvider } from '@xyflow/react';
 import { Button } from '@heroui/react';
 import { Toast } from '@heroui/react/toast';
-import { Sliders, ArrowRightArrowLeft } from '@gravity-ui/icons';
+import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
+import { ManualOperation } from '../components/ManualOperation';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
 import { DecisionTree, type DecisionTreeHandle, type ValidationError } from '../components/DecisionTree';
 import {
-  COLOR_CONFIGS,
+  CORE_PROFILES,
   QUESTION_SEQ_TYPE,
-  SEQ_DURATION_MS,
-  NO_SEQ_DELAY_MS,
-  getAnswerForQuestion,
-} from '../robotColorConfigs';
+} from '../robotProfiles';
+
+const SEQ_TIMEOUT_MS = 10000;
 import logo from '../../../assets/logo.svg';
 import thymioDefault from '../../../assets/thymio_icon.svg';
 import thymioRed from '../../../assets/thymio_icon_red.svg';
 import thymioBlue from '../../../assets/thymio_icon_blue.svg';
 import thymioGreen from '../../../assets/thymio_icon_green.svg';
 import thymioYellow from '../../../assets/thymio_icon_yellow.svg';
-import thymioOrange from '../../../assets/thymio_icon_orange.svg';
-import thymioPurple from '../../../assets/thymio_icon_purple.svg';
-import thymioPink from '../../../assets/thymio_icon_pink.svg';
 import thymioCyan from '../../../assets/thymio_icon_cyan.svg';
+import thymioPink from '../../../assets/thymio_icon_pink.svg';
 
 const THYMIO_ICONS: Record<string, string> = {
   red: thymioRed,
   blue: thymioBlue,
   green: thymioGreen,
   yellow: thymioYellow,
-  orange: thymioOrange,
-  purple: thymioPurple,
-  pink: thymioPink,
   cyan: thymioCyan,
+  pink: thymioPink,
 };
 import type { ThymioStatus } from '../../../Entities/ThymioManager/Model/thymio.model';
 
 type LocalStatus = ThymioStatus | 'connecting';
+
+type SensorData = { battery: number; mic: number; prox: number[]; seqType: number; light: number };
+const SENSOR_DEFAULTS: SensorData = { battery: 0, mic: 0, prox: [0, 0, 0, 0, 0], seqType: 0, light: 0 };
+
+function proxToDepth(p: number): number {
+  if (p < 1000)  return 0;
+  if (p < 2500) return 3;
+  if (p < 3500) return 2;
+  return 1;
+}
 
 function displayState(s: LocalStatus | undefined): 'ready' | 'connecting' | 'unavailable' {
   if (s === 'ready') {
@@ -49,7 +55,7 @@ function displayState(s: LocalStatus | undefined): 'ready' | 'connecting' | 'una
 }
 
 export function SoftwareMain() {
-  const { go, user, robotConfigs, robotTeams, controledRobot, selectRobot, initializeRobot } = useScenario();
+  const { user, robotConfigs, robotTeams, controledRobot, selectRobot, initializeRobot } = useScenario();
 
   const bureauRobots = useMemo(
     () => robotConfigs.filter(r => robotTeams[r.uuid] === 'bureau'),
@@ -58,18 +64,21 @@ export function SoftwareMain() {
   const activeColor = robotConfigs.find(r => r.uuid === controledRobot)?.color;
   const thymioIcon = (activeColor && THYMIO_ICONS[activeColor]) ?? thymioDefault;
   const [testing, setTesting] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
+  const [sensorData, setSensorData] = useState<SensorData>(SENSOR_DEFAULTS);
   const [validationErrors, setErrors] = useState<ValidationError[]>([]);
   const connectingRef = useRef(new Set<string>());
   const decisionTreeRef = useRef<DecisionTreeHandle>(null);
   const toastKeyRef = useRef<string | null>(null);
   const autoAnswerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingAnswerRef = useRef<'yes' | 'no'>('yes');
   const testingRef = useRef(testing);
   const robotTeamsRef = useRef(robotTeams);
   const controledRobotRef = useRef(controledRobot);
+  const activeQuestionRef = useRef<string | null>(null);
+  const robotConfigsRef = useRef(robotConfigs);
   useLayoutEffect(() => {
     testingRef.current = testing;
   }, [testing]);
@@ -79,19 +88,35 @@ export function SoftwareMain() {
   useLayoutEffect(() => {
     controledRobotRef.current = controledRobot;
   }, [controledRobot]);
+  useLayoutEffect(() => {
+    activeQuestionRef.current = activeQuestion;
+  }, [activeQuestion]);
+  useLayoutEffect(() => {
+    robotConfigsRef.current = robotConfigs;
+  }, [robotConfigs]);
 
-  // Called when the robot emits SeqDone — answers the frontier immediately
-  // instead of waiting for the fallback timeout.
-  const handleSeqDone = useCallback(() => {
+  // Convert a raw seq_done value to a tree answer for the active question.
+  // Battery questions receive the battery level (1/2/3); all others: 1=yes, 0=no.
+  const seqDoneToAnswer = useCallback((value: number): 'yes' | 'no' => {
+    const q = activeQuestionRef.current;
+    if (q === 'battery_low')  return value === 0 ? 'yes' : 'no';
+    if (q === 'battery_mid')  return value === 1 ? 'yes' : 'no';
+    if (q === 'battery_full') return value === 2 ? 'yes' : 'no';
+    return value === 1 ? 'yes' : 'no';
+  }, []);
+
+  // Called when the robot emits seq_done — answers the frontier immediately.
+  const handleSeqDone = useCallback((value: number) => {
     if (!testingRef.current) {
       return;
     }
+    // Clear the error timeout regardless of whether it was set.
     if (autoAnswerTimerRef.current) {
       clearTimeout(autoAnswerTimerRef.current);
       autoAnswerTimerRef.current = null;
-      decisionTreeRef.current?.answerFrontier(pendingAnswerRef.current);
     }
-  }, []);
+    decisionTreeRef.current?.answerFrontier(seqDoneToAnswer(value));
+  }, [seqDoneToAnswer]);
 
   const tryConnect = useCallback(
     (uuid: string) => {
@@ -101,19 +126,41 @@ export function SoftwareMain() {
       connectingRef.current.add(uuid);
       setStatuses(prev => ({ ...prev, [uuid]: 'connecting' }));
       initializeRobot(uuid, (_u, vars) => {
+        if (vars.status_battery !== undefined && uuid === controledRobotRef.current) {
+          setSensorData({
+            battery: vars.status_battery,
+            mic:     vars.status_mic      ?? 0,
+            prox:    [vars.status_prox_0  ?? 0, vars.status_prox_1 ?? 0, vars.status_prox_2 ?? 0, vars.status_prox_3 ?? 0, vars.status_prox_4 ?? 0],
+            seqType: vars.status_seq_type ?? 0,
+            light:   vars.status_light    ?? 0,
+          });
+        }
         if (vars.seq_done !== undefined && uuid === controledRobotRef.current) {
-          handleSeqDone();
+          handleSeqDone(vars.seq_done);
         }
       })
-        .then(() => {
+        .then(async () => {
           connectingRef.current.delete(uuid);
           setStatuses(prev => ({ ...prev, [uuid]: 'ready' }));
           const isField = robotTeamsRef.current[uuid] === 'terrain';
-          user.setVariables(uuid, new Map([['field_mode', [isField ? 1 : 0]]]));
+          const profileIndex = robotConfigsRef.current.findIndex(r => r.uuid === uuid);
+          const cfg = CORE_PROFILES[profileIndex]?.config;
+          const initVars = new Map<string, number[]>([['field_mode', [isField ? 1 : 0]]]);
+          if (cfg) {
+            initVars.set('light_working', [cfg.light_working]);
+            initVars.set('ir_working', [cfg.ir_working]);
+            initVars.set('motor_noise', [cfg.motor_noise]);
+            initVars.set('battery_level', [cfg.battery_level]);
+          }
+          await user.setVariables(uuid, initVars);
+          console.log('[SoftwareMain] emitting set_battery, cfg:', cfg, 'uuid:', uuid);
+          if (cfg) user.emitEvent(uuid, 'set_battery');
         })
         .catch((err: unknown) => {
           connectingRef.current.delete(uuid);
-          console.error('[SoftwareMain] initializeRobot failed:', err);
+          // Show greyed — the next poll will retry if TDM reports the robot available again.
+          setStatuses(prev => ({ ...prev, [uuid]: 'disconnected' }));
+          console.warn('[SoftwareMain] initializeRobot failed (will retry):', err);
         });
     },
     [initializeRobot, user, handleSeqDone]
@@ -137,6 +184,19 @@ export function SoftwareMain() {
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
   }, [bureauRobots, user, tryConnect]);
+
+  const prevRobotRef = useRef<string>('');
+  const sensorDataRef = useRef<SensorData>(SENSOR_DEFAULTS);
+  sensorDataRef.current = sensorData;
+  useEffect(() => {
+    const prevRobot = prevRobotRef.current;
+    prevRobotRef.current = controledRobot;
+    if (prevRobot && sensorDataRef.current.light > 0) {
+      user.emitEvent(prevRobot, 'light_off');
+    }
+    setSensorData(SENSOR_DEFAULTS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [controledRobot]);
 
   // Deselect if the selected robot is no longer ready.
   useEffect(() => {
@@ -165,7 +225,6 @@ export function SoftwareMain() {
 
   const robotReady = !!controledRobot && statuses[controledRobot] === 'ready';
   const treeValid = validationErrors.length === 0;
-
   // Clear any pending auto-answer when testing stops.
   useEffect(() => {
     if (!testing) {
@@ -191,15 +250,15 @@ export function SoftwareMain() {
       if (!questionId || !controledRobot) {
         return;
       }
-      const color = robotConfigs.find(r => r.uuid === controledRobot)?.color;
-      if (!color) {
+      const profileIndex = robotConfigs.findIndex(r => r.uuid === controledRobot);
+      const cfg = CORE_PROFILES[profileIndex]?.config;
+      if (!cfg) {
         return;
       }
-      const cfg = COLOR_CONFIGS[color];
 
-      const seqType = QUESTION_SEQ_TYPE[questionId];
+      const seqEvent = QUESTION_SEQ_TYPE[questionId];
 
-      // Write config and optional sequence trigger in one call.
+      // Push config variables, then emit the event that starts the sequence.
       const vars = new Map<string, number[]>([
         ['light_working', [cfg.light_working]],
         ['ir_working', [cfg.ir_working]],
@@ -207,25 +266,27 @@ export function SoftwareMain() {
         ['battery_level', [cfg.battery_level]],
         ['line_follow', [0]],
       ]);
-      if (seqType !== undefined) {
-        vars.set('seq_type', [seqType]);
-        vars.set('seq_trigger', [1]);
-      }
       user.setVariables(controledRobot, vars);
+      if (seqEvent) {
+        user.emitEvent(controledRobot, seqEvent);
+      }
 
-      const answer = getAnswerForQuestion(questionId, cfg);
-      pendingAnswerRef.current = answer;
-
-      const delay = seqType !== undefined ? SEQ_DURATION_MS[seqType] ?? 2000 : NO_SEQ_DELAY_MS;
-
-      // Fallback timer: fires if SeqDone never arrives (no sequence, or lost event).
+      // If the robot doesn't emit seq_done within 6 s, surface an error and stop the test.
       autoAnswerTimerRef.current = setTimeout(() => {
         autoAnswerTimerRef.current = null;
         if (!testingRef.current) {
           return;
         }
-        decisionTreeRef.current?.answerFrontier(pendingAnswerRef.current);
-      }, delay);
+        setTesting(false);
+        if (toastKeyRef.current) {
+          Toast.toast.close(toastKeyRef.current);
+        }
+        const key = Toast.toast.warning('Robot sans réponse', {
+          description: `Le robot n'a pas réagi dans les ${Math.round(SEQ_TIMEOUT_MS / 1000)} secondes. Vérifiez la connexion.`,
+          timeout: SEQ_TIMEOUT_MS,
+        });
+        toastKeyRef.current = key;
+      }, SEQ_TIMEOUT_MS);
     },
     [controledRobot, robotConfigs, user]
   );
@@ -242,7 +303,7 @@ export function SoftwareMain() {
       const first = validationErrors[0];
       const key = Toast.toast.warning('Arbre incomplet', {
         description: first.message,
-        timeout: 6000,
+        timeout: SEQ_TIMEOUT_MS,
         actionProps: {
           children: 'Voir',
           variant: 'secondary',
@@ -264,21 +325,19 @@ export function SoftwareMain() {
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: 'var(--color-beige-light)' }}>
       {/* ── Header ──────────────────────────────────────────── */}
-      <header className="flex items-center gap-4 px-6 py-3 border-b shrink-0">
+      <header className="flex items-center gap-4 px-6 py-2 border-b shrink-0">
         <img src={logo} alt="SavannIA" className="h-8 mt-1" />
       </header>
 
       {/* ── Main ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left — Programme (2/3) */}
-        <div className="flex flex-col gap-4 p-6 border-r overflow-hidden" style={{ flex: '2 1 0' }}>
-          <h2 className="text-xl font-bold shrink-0">Programme</h2>
-
+        <div className="flex flex-col gap-4 p-4 border-r overflow-hidden" style={{ flex: '5 1 0' }}>
           <div className="flex flex-col flex-1 min-h-0">
             {/* Action row */}
             <div className="shrink-0 flex items-center gap-3">
               {/* Tab pill */}
-              <div className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-2">
+              <div className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1">
                 <img src={thymioIcon} alt="Robot :" className="h-10 mr-1 transition-all duration-300" />
 
                 <div className="flex gap-1.5 items-center">
@@ -314,48 +373,75 @@ export function SoftwareMain() {
                   {bureauRobots.length === 0 && <span className="text-xs text-gray-400">—</span>}
                 </div>
 
-                <div className="w-px h-4 bg-gray-200 mx-1" />
-
-                <Button
-                  variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
-                  size="sm"
-                  isDisabled={!testing && !robotReady}
-                  onPress={handleLaunchTest}
-                  className={testing ? '!bg-red-500' : ''}
-                >
-                  {testing ? '■ Arrêter' : '▶ Lancer le test'}
-                </Button>
+                {!manualMode && (
+                  <>
+                    <div className="w-px h-4 bg-gray-200 mx-1" />
+                    <Button
+                      variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
+                      size="sm"
+                      isDisabled={!testing && !robotReady}
+                      onPress={handleLaunchTest}
+                      className={testing ? '!bg-red-500' : ''}
+                    >
+                      {testing ? '■ Arrêter' : '▶ Lancer le test'}
+                    </Button>
+                  </>
+                )}
               </div>
 
               <div className="flex-1" />
 
-              <Button variant="outline" size="sm" onPress={() => setTeamModalOpen(true)}>
+              <Button variant="outline" size="sm" isDisabled={testing} onPress={() => setTeamModalOpen(true)}>
                 <ArrowRightArrowLeft />
                 Échanges robots
               </Button>
 
-              <Button variant="primary" size="sm" onPress={() => go('manual-control')} className="!bg-gray-700">
-                <Sliders />
-                Opération manuelle
-              </Button>
+              {manualMode ? (
+                <Button variant="primary" size="sm" onPress={() => setManualMode(false)} className="!bg-gray-700">
+                  <LogoDrawIo />
+                  Arbre de décision
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  isDisabled={testing}
+                  onPress={() => { setTesting(false); setManualMode(true); }}
+                  className="!bg-gray-700"
+                >
+                  <Sliders />
+                  Opération manuelle
+                </Button>
+              )}
             </div>
 
-            {/* Tree */}
+            {/* Main content: tree or manual operation */}
             <div className="flex-1 min-h-0 rounded-xl rounded-tl-none overflow-hidden border border-gray-100 bg-white">
-              <ReactFlowProvider>
-                <DecisionTree
-                  ref={decisionTreeRef}
-                  testing={testing}
-                  onValidationChange={setErrors}
-                  onActiveQuestionChange={handleActiveQuestion}
+              {manualMode ? (
+                <ManualOperation
+                  key={controledRobot}
+                  disabled={!robotReady}
+                  onEmitEvent={event => user.emitEvent(controledRobot, event)}
+                  arc={sensorData.battery / 224}
+                  level={sensorData.mic / 255}
+                  radar={sensorData.prox.map(proxToDepth)}
                 />
-              </ReactFlowProvider>
+              ) : (
+                <ReactFlowProvider>
+                  <DecisionTree
+                    ref={decisionTreeRef}
+                    testing={testing}
+                    onValidationChange={setErrors}
+                    onActiveQuestionChange={handleActiveQuestion}
+                  />
+                </ReactFlowProvider>
+              )}
             </div>
           </div>
         </div>
 
         {/* Right — Guide + Data (1/3) */}
-        <div className="flex flex-col overflow-hidden" style={{ flex: '1 1 0' }}>
+        <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0' }}>
           <div className="flex flex-col gap-3 p-6 border-b overflow-y-auto" style={{ flex: '1 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Guide</h3>
             <TodoList

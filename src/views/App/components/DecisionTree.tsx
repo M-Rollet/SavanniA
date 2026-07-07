@@ -22,8 +22,8 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { RootNode, type RootNodeData } from './RootNode';
-import { DecisionNode, type DecisionNodeData } from './DecisionNode';
-import { LeafNode, type LeafNodeData } from './LeafNode';
+import { DecisionNode, type DecisionNodeData, NODE_WIDTH as DECISION_WIDTH } from './DecisionNode';
+import { LeafNode, type LeafNodeData, NODE_WIDTH as LEAF_WIDTH } from './LeafNode';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 
 export type ValidationError = { nodeId: string; message: string };
@@ -58,13 +58,11 @@ function validateTree(nodes: Node[], edges: Edge[]): ValidationError[] {
 
 // ── Layout constants ────────────────────────────────────────
 const ROOT_WIDTH = 100;
-const DECISION_WIDTH = 290;
-const LEAF_WIDTH = 220;
 const DECISION_HEIGHT = 90;
 const DECISION_HEIGHT_EDIT = 170; // card + 20px gap + 2 add buttons
 const ROOT_LEVEL_GAP = 180;
-const LEVEL_HEIGHT = 290;
-const X_GAP = 300;
+const LEVEL_HEIGHT = 200;
+const X_GAP = 330;
 
 // ── Viewport animation constants ────────────────────────────
 const ANIM_DURATION = 300;
@@ -283,15 +281,58 @@ function getDescendants(parentId: string, edges: Edge[]): Set<string> {
   return out;
 }
 
-// ── Initial state — root pre-positioned by layoutTree so it never moves ──
-// Without this, the root starts at (0,0) but layoutTree places it at
-// (-ROOT_WIDTH/2, 0). Adding the first child would trigger a layout that
-// "jumps" the root to its correct position.
-const initialEdges: Edge[] = [];
-const initialNodes: Node[] = layoutTree(
-  [{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }],
-  initialEdges
-);
+const STORAGE_KEY = 'savannia-decision-tree';
+
+export function clearSavedTree() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+// ── Initial tree ─────────────────────────────────────────────
+// Shown on first access (no saved tree in localStorage).
+// Edit nodes/edges below to change the pre-built starting tree.
+// Use fixed string IDs (not random UUIDs) so the structure is predictable.
+// Available questionId values: 'light_working' | 'ir_working' | 'motor_noise'
+//                              | 'battery_low' | 'battery_mid' | 'battery_full'
+// Leaf `decision` values: true (robot OK) | false (robot KO)
+const INITIAL_TREE: { nodes: Node[]; edges: Edge[] } = (() => {
+  const edges: Edge[] = [
+    { id: 'root-out-d1', source: 'root', sourceHandle: 'out', target: 'd1' },
+    { id: 'd1-yes-l1',   source: 'd1',   sourceHandle: 'yes', target: 'l1' }, // battery low → KO
+    { id: 'd1-no-d2',    source: 'd1',   sourceHandle: 'no',  target: 'd2' },
+    { id: 'd2-yes-l2',   source: 'd2',   sourceHandle: 'yes', target: 'l2' },
+    { id: 'd2-no-l3',    source: 'd2',   sourceHandle: 'no',  target: 'l3' },
+  ];
+  const nodes: Node[] = [
+    { id: 'root', type: 'root',     position: { x: 0, y: 0 }, data: {} },
+    { id: 'd1',   type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'battery_low' } },
+    { id: 'd2',   type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
+    { id: 'l1',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'l2',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: true  } },
+    { id: 'l3',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: false } },
+  ];
+  return { nodes: layoutTree(nodes, edges), edges };
+})();
+
+
+function loadTree(): { nodes: Node[]; edges: Edge[] } {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { nodes: Node[]; edges: Edge[] };
+      if (
+        Array.isArray(parsed.nodes) &&
+        Array.isArray(parsed.edges) &&
+        parsed.nodes.some(n => n.id === 'root')
+      ) {
+        // Re-run layout so positions are always consistent regardless of what was saved.
+        return { nodes: layoutTree(parsed.nodes, parsed.edges), edges: parsed.edges };
+      }
+    }
+  } catch {
+    // ignore parse/quota errors
+  }
+  return INITIAL_TREE;
+}
 
 // ── Component ───────────────────────────────────────────────
 type DecisionTreeProps = {
@@ -305,18 +346,19 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
   ref
 ) {
   const { controledRobot, robotConfigs } = useScenario();
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [edges, setEdges] = useState<Edge[]>(initialEdges);
+  const [nodes, setNodes] = useState<Node[]>(() => loadTree().nodes);
+  const [edges, setEdges] = useState<Edge[]>(() => loadTree().edges);
   const [activeHandles, setActiveHandles] = useState<Map<string, 'yes' | 'no'>>(new Map());
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const { setCenter } = useReactFlow();
 
-  const nodesRef = useRef<Node[]>(initialNodes);
-  const edgesRef = useRef<Edge[]>(initialEdges);
+  const nodesRef = useRef<Node[]>(nodes);
+  const edgesRef = useRef<Edge[]>(edges);
   const activeHandlesRef = useRef<Map<string, 'yes' | 'no'>>(new Map());
   const animRafRef = useRef<number | null>(null);
   const panTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onValidationRef = useRef(onValidationChange);
   const onActiveQuestionRef = useRef(onActiveQuestionChange);
   useLayoutEffect(() => {
@@ -340,6 +382,27 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       setActiveHandles(new Map());
     }
   }, [testing]);
+
+  // ── Persist tree to localStorage (debounced, no positions) ──
+  useEffect(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            nodes: nodes.map(({ id, type, data }) => ({ id, type, position: { x: 0, y: 0 }, data })),
+            edges: edges.map(({ id, source, sourceHandle, target }) => ({ id, source, sourceHandle, target })),
+          })
+        );
+      } catch {
+        // ignore quota errors
+      }
+    }, 500);
+  }, [nodes, edges]);
 
   // ── rAF animation ─────────────────────────────────────────
   // startOverrides: initial position for newly added nodes (keyed by id).

@@ -159,25 +159,25 @@ export function TeamModal({ isOpen, onClose }: Props) {
                 <div className="flex flex-col gap-2">
                   {/* Labels row — spacer keeps the label widths aligned with their zones */}
                   <div className="flex gap-3 justify-center items-center">
-                    <p className="w-44 text-sm font-semibold text-center">Équipe de terrain</p>
-                    <span className="w-9 shrink-0" />
                     <p className="w-44 text-sm font-semibold text-center">Équipe de bureau</p>
+                    <span className="w-9 shrink-0" />
+                    <p className="w-44 text-sm font-semibold text-center">Équipe de terrain</p>
                   </div>
 
                   {/* Zones + button row — items-center aligns button to zone midpoint */}
                   <div className="flex gap-3 items-center justify-center">
                     <div
-                      data-zone="terrain"
-                      className={`min-h-[172px] w-44 rounded-xl p-3 grid grid-cols-3 gap-3 items-start content-start transition-all duration-150 ${
-                        dragOver === 'terrain'
+                      data-zone="bureau"
+                      className={`min-h-[120px] w-44 rounded-xl p-3 grid grid-cols-3 gap-3 items-start content-start transition-all duration-150 ${
+                        dragOver === 'bureau'
                           ? 'bg-sky-50 border-2 border-sky-300 border-dashed'
                           : 'bg-gray-50 border-2 border-gray-100'
                       }`}
                     >
-                      {terrainRobots.map(r => (
+                      {bureauRobots.map(r => (
                         <RobotCircle key={r.uuid} r={r} draggingUuid={draggingUuid} onDragStart={handleDragStart} />
                       ))}
-                      {terrainRobots.length === 0 && (
+                      {bureauRobots.length === 0 && (
                         <span className="col-span-3 text-gray-300 text-xs italic text-center">Déposer ici</span>
                       )}
                     </div>
@@ -191,17 +191,17 @@ export function TeamModal({ isOpen, onClose }: Props) {
                     </button>
 
                     <div
-                      data-zone="bureau"
-                      className={`min-h-[172px] w-44 rounded-xl p-3 grid grid-cols-3 gap-3 items-start content-start transition-all duration-150 ${
-                        dragOver === 'bureau'
+                      data-zone="terrain"
+                      className={`min-h-[120px] w-44 rounded-xl p-3 grid grid-cols-3 gap-3 items-start content-start transition-all duration-150 ${
+                        dragOver === 'terrain'
                           ? 'bg-sky-50 border-2 border-sky-300 border-dashed'
                           : 'bg-gray-50 border-2 border-gray-100'
                       }`}
                     >
-                      {bureauRobots.map(r => (
+                      {terrainRobots.map(r => (
                         <RobotCircle key={r.uuid} r={r} draggingUuid={draggingUuid} onDragStart={handleDragStart} />
                       ))}
-                      {bureauRobots.length === 0 && (
+                      {terrainRobots.length === 0 && (
                         <span className="col-span-3 text-gray-300 text-xs italic text-center">Déposer ici</span>
                       )}
                     </div>

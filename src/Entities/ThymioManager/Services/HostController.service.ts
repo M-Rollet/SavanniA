@@ -40,11 +40,11 @@ export class Thymio2DeviceManager implements TdmController {
 
   takeControl = async (
     uuid: string,
-    onVariableChange: (uuid: string, variables: { [name: string]: number }) => void
+    onEvent: (uuid: string, events: { [name: string]: number }) => void
   ): Promise<void> => {
     const client = this.getRobotByUuid(uuid);
     if (client) {
-      await client.takeControl(uuid, onVariableChange);
+      await client.takeControl(uuid, onEvent);
     }
   };
 
@@ -52,6 +52,13 @@ export class Thymio2DeviceManager implements TdmController {
     const client = this.getRobotByUuid(uuid);
     if (client) {
       await client.setVariables(uuid, vars);
+    }
+  };
+
+  emitEvent = async (uuid: string, eventName: string) => {
+    const client = this.getRobotByUuid(uuid);
+    if (client) {
+      await client.emitEvent(uuid, eventName);
     }
   };
 

@@ -5,6 +5,9 @@
   color-scheme: light;
 
   --color-beige-light: #f9f4e0;
+  --color-green-light: #7CB68F;
+  --color-green: #4E7B5A;
+  --color-green-dark: #1A3E24;
 }
 
 body {

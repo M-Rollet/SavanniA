@@ -19,18 +19,16 @@ export class ThymioIA implements IThymioIA {
   getRobotsUuids = async () => this.tdmController.getRobotsUuids();
   getRobotStatus = (uuid: string) => this.tdmController.getRobotStatus(uuid);
 
-  /**
-   * Locks and initialises a robot, then subscribes to its variable-change events.
-   * The optional callback receives the UUID and a map of changed variable names → values.
-   */
   takeControl = async (
     uuid: string,
-    onVariableChange: (uuid: string, variables: { [name: string]: number }) => void = () => {}
+    onEvent: (uuid: string, events: { [name: string]: number }) => void = () => {}
   ): Promise<void> => {
-    return this.tdmController.takeControl(uuid, onVariableChange);
+    return this.tdmController.takeControl(uuid, onEvent);
   };
 
   setVariables = (uuid: string, vars: Map<string, number[]>) => this.tdmController.setVariables(uuid, vars);
+
+  emitEvent = (uuid: string, eventName: string) => this.tdmController.emitEvent(uuid, eventName);
 
   identify = (uuid: string) => this.tdmController.identify(uuid);
 }

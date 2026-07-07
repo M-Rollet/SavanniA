@@ -4,11 +4,34 @@ import { ThymioStatus, Thymio, ThymioType, Robot } from '../Model';
 import { mobsya } from '@mobsya-association/thymio-api/dist/thymio_generated';
 import { asebaScript, eventsDefinition } from './aesl.resource';
 
-/**
- * Thymio2 store that maps raw TDM node events to normalised sensor state.
- * All sensor values are normalised to 0–100 (horiz/ground proximity, motors)
- * or 0/1 (mic) by the Aseba program before being emitted as events.
- */
+const RETRY_TIMEOUT_MS = 300;
+const MAX_RETRIES = 3;
+
+// Mirror of the AESL SEQ_* constants (initialised at robot startup).
+const SEQ_NULL               = 0;
+const SEQ_TEST_NOISE         = 1;
+const SEQ_TEST_LIGHT_WORKING = 2;
+const SEQ_TEST_LIGHT_FAILING = 3;
+const SEQ_TEST_IR            = 4;
+const SEQ_TEST_BATTERY       = 5;
+const SEQ_MOVE               = 7;
+
+type StatusSnapshot = { light: number; seqType: number };
+
+// Maps each event name to a predicate that, once true in the status stream,
+// confirms the robot processed the command. Events without an entry are sent
+// fire-and-forget (no retry).
+const EVENT_CONFIRMATIONS: Partial<Record<string, (s: StatusSnapshot) => boolean>> = {
+  light_on:     s => s.light > 0,
+  light_off:    s => s.light === 0,
+  go_forward:   s => s.seqType === SEQ_MOVE,
+  go_backward:  s => s.seqType === SEQ_MOVE,
+  test_sound:   s => s.seqType === SEQ_TEST_NOISE,
+  test_light:   s => s.seqType === SEQ_TEST_LIGHT_WORKING || s.seqType === SEQ_TEST_LIGHT_FAILING,
+  test_ir:      s => s.seqType === SEQ_TEST_IR,
+  test_battery: s => s.seqType === SEQ_TEST_BATTERY,
+};
+
 @Store({ key: 'Thymio Store', predicate: ['thymio2', 'eventVariable'] })
 export class Thymio2EventVariable implements Thymio {
   prox_horizontal = [0, 0, 0, 0, 0, 0, 0];
@@ -27,6 +50,8 @@ export class Thymio2EventVariable implements Thymio {
   eventCallback: (vars: { [name: string]: number }) => void = () => {};
 
   private readyResolver: (() => void) | null = null;
+  private StatusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL };
+  private pendingAck: { predicate: (s: StatusSnapshot) => boolean; resolve: (confirmed: boolean) => void } | null = null;
 
   constructor({ uuid, node }: { uuid: string; node: INode }) {
     this.uuid = uuid;
@@ -44,33 +69,82 @@ export class Thymio2EventVariable implements Thymio {
   initialize = async () => {
     console.log('[Thymio] locking', this.uuid);
     await this.node.lock();
-    console.log('[Thymio] registering events', this.uuid);
-    await this.node.setEventsDescriptions(eventsDefinition);
-    console.log('[Thymio] sending Aseba program', this.uuid);
-    await this.node.sendAsebaProgram(asebaScript, false);
-    // Create the ready promise BEFORE runProgram so the resolver is set
-    // before the startup emit fires on the robot.
+    // Re-subscribe after lock: locking a node resets TDM-side event monitoring.
+    this.node.onEvents = this.onEventReceived;
+    // Set up the resolver immediately — before any async round-trips — so that
+    // a 'ready' emitted during sendAsebaProgram (some TDM builds auto-run) is
+    // not missed.
     const readyPromise = this.waitForReady();
-    console.log('[Thymio] running program', this.uuid);
-    await this.node.runProgram();
-    console.log('[Thymio] waiting for ready event...', this.uuid);
-    await readyPromise;
-    console.log('[Thymio] ready!', this.uuid);
+    try {
+      console.log('[Thymio] registering events', this.uuid);
+      await this.node.setEventsDescriptions(eventsDefinition);
+      console.log('[Thymio] sending Aseba program', this.uuid);
+      await this.node.sendAsebaProgram(asebaScript, false);
+      console.log('[Thymio] running program', this.uuid);
+      await this.node.runProgram();
+      console.log('[Thymio] waiting for ready event...', this.uuid);
+      await readyPromise;
+      console.log('[Thymio] ready!', this.uuid);
+    } catch (err) {
+      this.readyResolver = null;
+      await this.node.unlock().catch(() => {});
+      throw err;
+    }
   };
 
   onStatusChanged = (callback: (robot: Robot) => void) => {
     this.statusCallback = callback;
   };
 
-  onVariableChange = (callback: (variables: { [name: string]: number }) => void) => {
+  onEvent = (callback: (events: { [name: string]: number }) => void) => {
     this.eventCallback = callback;
+  };
+
+  /**
+   * Emits an event to the robot. For events with a defined confirmation predicate,
+   * waits for the status stream to confirm the command was applied, retrying up to
+   * MAX_RETRIES times before throwing. Events without a predicate are fire-and-forget.
+   */
+  emitEvent = async (eventName: string): Promise<void> => {
+    if (!this.node) return;
+
+    const predicate = EVENT_CONFIRMATIONS[eventName];
+
+    if (!predicate) {
+      try {
+        await this.node.emitEvents(eventName);
+      } catch (error) {
+        console.error('[Thymio] emitEvent error:', error);
+      }
+      return;
+    }
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        await this.node.emitEvents(eventName);
+      } catch (error) {
+        console.error(`[Thymio] emitEvent ${eventName} error:`, error);
+      }
+
+      const confirmed = await new Promise<boolean>(resolve => {
+        this.pendingAck = { predicate, resolve };
+        setTimeout(() => resolve(false), RETRY_TIMEOUT_MS);
+      });
+      this.pendingAck = null;
+
+      if (confirmed) return;
+      if (attempt < MAX_RETRIES) {
+        console.warn(`[Thymio] ${eventName}: no confirmation, retry ${attempt + 1}/${MAX_RETRIES}`);
+      }
+    }
+
+    throw new Error(`[Thymio] ${eventName}: no confirmation after ${MAX_RETRIES} retries`);
   };
 
   setVariables = async (vars: Map<string, number[]>) => {
     if (!this.node) {
       return;
     }
-    console.log('[Thymio] setVariables', Object.fromEntries(vars));
     try {
       await this.node.setVariables(vars as Map<string, any>);
     } catch (error) {
@@ -90,42 +164,33 @@ export class Thymio2EventVariable implements Thymio {
     const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
     if (this.status === 'ready') {
-      // Single call: Aseba drives the full 3-flash sequence autonomously.
-      // identify_tick reset ensures a clean start if called while a previous
-      // flash is still running.
       try {
-        await this.setVariables(
-          new Map([
-            ['identify', [1]],
-            ['identify_tick', [0]],
-          ])
-        );
-        await delay(2100); // 41 ticks × 50 ms ≈ 2050 ms — keep spinner visible
+        await this.emitEvent('identify');
       } catch (error) {
         console.error('[Thymio] identify error:', error);
       }
     } else if (this.status === 'available') {
       // Robot not yet initialised: lock, upload a one-shot flash program, wait, unlock.
       const flashScript = `
-var count
-var on
-count = 0
-on = 0
-timer.period[0] = 400
-onevent timer0
-    if on == 0 then
-        call leds.top(32, 32, 32)
-        on = 1
-    else
-        call leds.top(0, 0, 0)
+        var count
+        var on
+        count = 0
         on = 0
-    end
-    count += 1
-    if count >= 6 then
-        call leds.top(0, 0, 0)
-        timer.period[0] = 0
-    end
-`;
+        timer.period[0] = 400
+        onevent timer0
+          if on == 0 then
+              call leds.top(32, 32, 32)
+              on = 1
+          else
+              call leds.top(0, 0, 0)
+              on = 0
+          end
+          count += 1
+          if count >= 6 then
+              call leds.top(0, 0, 0)
+              timer.period[0] = 0
+          end
+      `;
       try {
         await this.node.lock();
         await this.node.setEventsDescriptions([]);
@@ -171,85 +236,30 @@ onevent timer0
           console.log('[Thymio] ready event received');
           this.readyResolver?.();
           break;
-        case 'Prox':
-          this.handleProxEvent(value as number[]);
-          break;
-        case 'SeqDone':
+        case 'seq_done':
           this.eventCallback({ seq_done: (value as number[])[0] ?? 0 });
           break;
-        case 'B_center':
-        case 'B_forward':
-        case 'B_backward':
-        case 'B_left':
-        case 'B_right':
-          this.handleButtonEvent(evt, value as number[]);
+        case 'status': {
+          const arr = (value as number[]) ?? [];
+          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: arr[7] ?? 0 };
+          if (this.pendingAck?.predicate(this.StatusSnapshot)) {
+            this.pendingAck.resolve(true);
+          }
+          this.eventCallback({
+            status_battery:  arr[0] ?? 0,
+            status_mic:      arr[1] ?? 0,
+            status_prox_0:   arr[2] ?? 0,
+            status_prox_1:   arr[3] ?? 0,
+            status_prox_2:   arr[4] ?? 0,
+            status_prox_3:   arr[5] ?? 0,
+            status_prox_4:   arr[6] ?? 0,
+            status_seq_type: arr[7] ?? 0,
+            status_light:    arr[8] ?? 0,
+          });
           break;
+        }
       }
     });
   };
 
-  /**
-   * Unpacks the Prox event payload and fires eventCallback only for values that changed.
-   * Payload order: [front×5, back×2, ground×2, motor_left, motor_right, mic] — all normalised by AESL.
-   */
-  private handleProxEvent = (value: number[]) => {
-    const [p0, p1, p2, p3, p4, p5, p6, g0, g1, ml, mr, mic] = value;
-    const changed: Record<string, number> = {};
-
-    const front = [p0, p1, p2, p3, p4];
-    const back = [p5, p6];
-
-    front.forEach((v, i) => {
-      if (this.prox_horizontal[i] !== v) {
-        changed[`prox_front_${i}`] = v;
-      }
-    });
-    back.forEach((v, i) => {
-      if (this.prox_horizontal[5 + i] !== v) {
-        changed[`prox_back_${i}`] = v;
-      }
-    });
-    this.prox_horizontal = [p0, p1, p2, p3, p4, p5, p6];
-
-    if (this.prox_ground_delta[0] !== g0) {
-      changed.prox_ground_0 = g0;
-    }
-    if (this.prox_ground_delta[1] !== g1) {
-      changed.prox_ground_1 = g1;
-    }
-    this.prox_ground_delta = [g0, g1];
-
-    if (this.motor_left_speed !== ml) {
-      changed.motor_left_speed = ml ?? 0;
-    }
-    if (this.motor_right_speed !== mr) {
-      changed.motor_right_speed = mr ?? 0;
-    }
-    this.motor_left_speed = ml ?? 0;
-    this.motor_right_speed = mr ?? 0;
-
-    if (this.mic_norm !== mic) {
-      changed.mic_norm = mic ?? 0;
-    }
-    this.mic_norm = mic ?? 0;
-
-    if (Object.keys(changed).length > 0) {
-      this.eventCallback(changed);
-    }
-  };
-
-  // value = [0|1]  (0 = released, 1 = pressed)
-  private handleButtonEvent = (evt: string, value: number[]) => {
-    const keyMap: Record<string, string> = {
-      B_center: 'button_center',
-      B_forward: 'button_forward',
-      B_backward: 'button_backward',
-      B_left: 'button_left',
-      B_right: 'button_right',
-    };
-    const field = keyMap[evt];
-    if (field) {
-      this.eventCallback({ [field]: value[0] ?? 0 });
-    }
-  };
 }

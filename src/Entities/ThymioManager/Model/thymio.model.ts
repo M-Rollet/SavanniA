@@ -20,8 +20,9 @@ export interface Thymio {
   status: ThymioStatus;
   initialize: () => Promise<void>;
   onStatusChanged: (callback: (robot: Robot) => void) => void;
-  onVariableChange: (callback: (variables: { [name: string]: number }) => void) => void;
+  onEvent: (callback: (events: { [name: string]: number }) => void) => void;
   setVariables: (vars: Map<string, number[]>) => Promise<void>;
+  emitEvent: (eventName: string) => Promise<void>;
   identify: () => Promise<void>;
 }
 

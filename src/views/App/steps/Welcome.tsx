@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, Button } from '@heroui/react';
-import { ArrowRight } from '@gravity-ui/icons';
+import { ArrowRight, Gear } from '@gravity-ui/icons';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
+import { MIN_ROBOTS } from '../robotProfiles';
 
 import background from '../../../assets/welcome_back.jpg';
 import logo from '../../../assets/logo.svg';
@@ -28,7 +29,7 @@ const slide = { duration: 0.4, ease: 'easeInOut' as const };
 
 export function Welcome() {
   const { go, robotConfigs, robotTeams, assignTeams } = useScenario();
-  const isConfigured = robotConfigs.length > 0;
+  const isConfigured = robotConfigs.length >= MIN_ROBOTS;
   const [phase, setPhase] = useState<'main' | 'intro' | 'team-split'>('main');
 
   const half = Math.ceil(robotConfigs.length / 2);
@@ -89,7 +90,7 @@ export function Welcome() {
               </Button>
               {!isConfigured && (
                 <p className="text-black/50 text-sm mt-3 drop-shadow">
-                  Configurez les robots via ⚙︎ avant de commencer.
+                  Configurez au moins {MIN_ROBOTS} robots via <Gear className="inline align-middle" /> avant de commencer.
                 </p>
               )}
             </motion.div>

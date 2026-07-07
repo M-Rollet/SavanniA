@@ -1,6 +1,7 @@
 import { createClient, INode } from '@mobsya-association/thymio-api';
 import { Service, Container, Observable, createObservable } from '../../../helpers';
 import { TdmClient, Thymio } from '../Model';
+import { tdmConnectionEvents } from '../tdmConnectionEvents';
 
 /**
  * Manages the WebSocket connection to a single TDM host.
@@ -61,15 +62,17 @@ export class ClientDeviceManager implements TdmClient {
     this.nodeList.set(current);
   };
 
-  /** Locks and initialises the robot, then subscribes to its variable-change events. */
+  /** Locks and initialises the robot, then subscribes to its robot events (e.g. seq_done). */
   takeControl = async (
     uuid: string,
-    onVariableChange: (uuid: string, variables: { [name: string]: number }) => void
+    onEvent: (uuid: string, events: { [name: string]: number }) => void
   ) => {
     const thymio = this.nodeList.state[uuid];
     if (thymio) {
+      // Register the callback before initializing so seq_done events are forwarded
+      // even if initialize() times out (ready never arrives).
+      thymio.onEvent(events => onEvent(uuid, events));
       await thymio.initialize();
-      this.nodeList.state[uuid].onVariableChange(variables => onVariableChange(uuid, variables));
     }
   };
 
@@ -77,6 +80,13 @@ export class ClientDeviceManager implements TdmClient {
     const thymio = this.nodeList.state[uuid];
     if (thymio) {
       await thymio.setVariables(vars);
+    }
+  };
+
+  emitEvent = async (uuid: string, eventName: string) => {
+    const thymio = this.nodeList.state[uuid];
+    if (thymio) {
+      await thymio.emitEvent(eventName);
     }
   };
 
@@ -99,11 +109,17 @@ export class ClientDeviceManager implements TdmClient {
    * Auto-reconnects on close or initial connection failure.
    */
   connectToTDM = () => {
+    let connected = false;
+
     const connect = () => {
       try {
         const client = createClient(`ws://${this.host}:8597`);
 
         client.onNodesChanged = (nodes: INode[]) => {
+          if (!connected) {
+            connected = true;
+            tdmConnectionEvents.emit(true);
+          }
           const catchNodes = nodes.map((node: INode) => {
             const nodeId = node.id.toString().replace(/[^a-zA-Z0-9 -]/g, '');
             return { nodeId, node };
@@ -113,10 +129,13 @@ export class ClientDeviceManager implements TdmClient {
 
         // When TDM closes (e.g. Thymio Suite restarts), clear the node list and reconnect.
         client.onClose = () => {
+          connected = false;
           this.nodeList.set({});
+          tdmConnectionEvents.emit(false);
           setTimeout(connect, 2000);
         };
       } catch {
+        tdmConnectionEvents.emit(false);
         setTimeout(connect, 2000);
       }
     };

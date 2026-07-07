@@ -1,19 +1,20 @@
 import { createContext, useContext, useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
+import { Toast } from '@heroui/react/toast';
 import { thymioManagerFactory } from '../../Entities/ThymioManager';
+import { tdmConnectionEvents } from '../../Entities/ThymioManager/tdmConnectionEvents';
 import type { Users } from '../../Entities/ThymioManager/Model/users.model';
 import { useLocalStorage } from '../../helpers/useLocalStorage';
+import { clearSavedTree } from './components/DecisionTree';
 
-export type Step = 'welcome' | 'team-split' | 'software-main' | 'manual-control' | 'data-management' | 'final-main';
+export type Step = 'welcome' | 'team-split' | 'software-main' | 'data-management' | 'final-main';
 
 export const ROBOT_COLORS = [
   { id: 'red', label: 'Rouge', hex: '#ef4444' },
   { id: 'blue', label: 'Bleu', hex: '#3b82f6' },
   { id: 'green', label: 'Vert', hex: '#22c55e' },
   { id: 'yellow', label: 'Jaune', hex: '#d2e903' },
-  { id: 'orange', label: 'Orange', hex: '#f97316' },
-  { id: 'purple', label: 'Violet', hex: '#a855f7' },
+  { id: 'cyan', label: 'Cyan', hex: '#06b6d4' },
   { id: 'pink', label: 'Rose', hex: '#ec4899' },
-  { id: 'cyan', label: 'Cyan', hex: '#00D5FA' },
 ] as const;
 
 export type RobotColor = (typeof ROBOT_COLORS)[number]['id'];
@@ -35,7 +36,7 @@ type ScenarioState = {
   /** Lock + program a robot for a session. Optional callback receives variable-change events. */
   initializeRobot: (
     uuid: string,
-    onVariableChange?: (uuid: string, variables: { [name: string]: number }) => void
+    onEvent?: (uuid: string, events: { [name: string]: number }) => void
   ) => Promise<void>;
   robotConfigs: RobotConfig[];
   setRobotConfigs: (configs: RobotConfig[]) => void;
@@ -61,9 +62,29 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [robotTeams, setRobotTeams] = useLocalStorage<Record<string, RobotTeam>>('scenario:teams', {});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  useEffect(() => {
+    let errorToastKey: string | null = null;
+    const unsub = tdmConnectionEvents.subscribe((connected) => {
+      if (connected) {
+        if (errorToastKey) {
+          Toast.toast.close(errorToastKey);
+          errorToastKey = null;
+        }
+        Toast.toast.success('Connecté à ThymioSuite');
+      } else if (!errorToastKey) {
+        errorToastKey = Toast.toast.warning('Impossible de se connecter à ThymioSuite', {
+          description: "Vérifier que l'application est ouverte",
+          timeout: 0,
+          isLoading: true,
+        });
+      }
+    });
+    return () => { unsub(); };
+  }, []);
+
   const initializeRobot = useCallback(
-    (uuid: string, onVariableChange?: (uuid: string, variables: { [name: string]: number }) => void) =>
-      user.takeControl(uuid, onVariableChange),
+    (uuid: string, onEvent?: (uuid: string, events: { [name: string]: number }) => void) =>
+      user.takeControl(uuid, onEvent),
     []
   );
 
@@ -114,6 +135,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   }, [robotConfigs]);
 
   const resetApp = () => {
+    clearSavedTree();
     setStep('welcome');
     setControledRobot('');
     setRobotConfigs([]);

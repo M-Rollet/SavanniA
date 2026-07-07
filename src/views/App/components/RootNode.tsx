@@ -6,8 +6,6 @@ import thymioRed from '../../../assets/thymio_icon_red.svg';
 import thymioBlue from '../../../assets/thymio_icon_blue.svg';
 import thymioGreen from '../../../assets/thymio_icon_green.svg';
 import thymioYellow from '../../../assets/thymio_icon_yellow.svg';
-import thymioOrange from '../../../assets/thymio_icon_orange.svg';
-import thymioPurple from '../../../assets/thymio_icon_purple.svg';
 import thymioPink from '../../../assets/thymio_icon_pink.svg';
 import thymioCyan from '../../../assets/thymio_icon_cyan.svg';
 
@@ -16,8 +14,6 @@ const ICONS: Record<string, string> = {
   blue: thymioBlue,
   green: thymioGreen,
   yellow: thymioYellow,
-  orange: thymioOrange,
-  purple: thymioPurple,
   pink: thymioPink,
   cyan: thymioCyan,
 };
