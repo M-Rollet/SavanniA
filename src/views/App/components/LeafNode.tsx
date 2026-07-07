@@ -6,6 +6,7 @@ export type LeafNodeData = {
   decision: boolean | null;
   isOnActivePath: boolean;
   testing: boolean;
+  editable: boolean;
   highlighted: boolean;
   onChangeDecision: (nodeId: string, decision: boolean) => void;
   onDelete: (nodeId: string) => void;
@@ -14,12 +15,13 @@ export type LeafNodeData = {
 export const NODE_WIDTH = 200;
 
 const OPTIONS = {
-  true: { label: "Prêt à partir", icon: CheckShape },
+  true: { label: 'Prêt à partir', icon: CheckShape },
   false: { label: 'À réparer', icon: Ban },
 } as const;
 
 export function LeafNode({ id, data }: NodeProps) {
-  const { decision, isOnActivePath, testing, highlighted, onChangeDecision, onDelete } = data as LeafNodeData;
+  const { decision, isOnActivePath, testing, editable, highlighted, onChangeDecision, onDelete } = data as LeafNodeData;
+  const canEdit = editable && !testing;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
@@ -33,13 +35,13 @@ export function LeafNode({ id, data }: NodeProps) {
     >
       <Handle type="target" position={Position.Top} />
 
-      {!testing && (
+      {canEdit && (
         <button
           onClick={() => onDelete(id)}
           onMouseDown={stopProp}
           className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-white border border-gray-200 hover:bg-red-50 hover:border-red-300 flex items-center justify-center z-20 transition-colors shadow-sm text-gray-400 hover:text-red-500"
         >
-          <Xmark/>
+          <Xmark />
         </button>
       )}
 
@@ -57,9 +59,9 @@ export function LeafNode({ id, data }: NodeProps) {
                 key={key}
                 data-value={key}
                 data-selected={isSelected || undefined}
-                onClick={() => !testing && onChangeDecision(id, value)}
+                onClick={() => canEdit && onChangeDecision(id, value)}
                 onMouseDown={stopProp}
-                disabled={testing}
+                disabled={!canEdit}
                 className="decision-btn w-full text-base px-3 py-2 rounded-lg border transition-all flex items-center gap-2"
               >
                 <Icon width={14} height={14} className="shrink-0" />

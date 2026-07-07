@@ -6,7 +6,9 @@ import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
 import { ManualOperation } from '../components/ManualOperation';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
+import { TerrainModal } from '../components/TerrainModal';
 import { TimelinePanel } from '../components/TimelinePanel';
+import { DataTable } from '../components/DataTable';
 import { DecisionTree, type DecisionTreeHandle, type ValidationError } from '../components/DecisionTree';
 import { getStepDef, EMPTY_ROBOT_ENTRY, questionIdToCriterion } from './stepDefinitions';
 import { CORE_PROFILES, QUESTION_SEQ_TYPE } from '../robotProfiles';
@@ -86,6 +88,7 @@ export function SoftwareMain() {
   const [manualMode, setManualMode] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
+  const [terrainModalOpen, setTerrainModalOpen] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
   const [sensorData, setSensorData] = useState<SensorData>(SENSOR_DEFAULTS);
   const [validationErrors, setErrors] = useState<ValidationError[]>([]);
@@ -117,6 +120,15 @@ export function SoftwareMain() {
   useLayoutEffect(() => {
     physicalRobotDataRef.current = physicalRobotData;
   }, [physicalRobotData]);
+
+  // Auto-open the terrain modal the first time this step is reached.
+  const prevStepIndexRef = useRef(stepIndex);
+  useEffect(() => {
+    if (stepDef.features.observationEntry && prevStepIndexRef.current !== stepIndex) {
+      setTerrainModalOpen(true);
+    }
+    prevStepIndexRef.current = stepIndex;
+  }, [stepIndex, stepDef.features.observationEntry]);
 
   // Marks the currently-selected robot as tested once its test run reaches a tree leaf.
   const handleLeafReached = useCallback(() => {
@@ -175,9 +187,10 @@ export function SoftwareMain() {
         clearTimeout(autoAnswerTimerRef.current);
         autoAnswerTimerRef.current = null;
       }
+      recordCriterionResult(value);
       decisionTreeRef.current?.answerFrontier(seqDoneToAnswer(value));
     },
-    [seqDoneToAnswer]
+    [seqDoneToAnswer, recordCriterionResult]
   );
 
   const tryConnect = useCallback(
@@ -495,7 +508,28 @@ export function SoftwareMain() {
 
             {/* Main content: tree or manual operation */}
             <div className="flex-1 min-h-0 rounded-xl rounded-tl-none overflow-hidden border border-gray-100 bg-white">
-              {!showTree && !showManual ? (
+              {stepDef.features.observationEntry ? (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
+                  <p className="text-gray-500 text-sm max-w-md text-center">
+                    Direction le terrain ! Note tes observations pour chaque robot testé.
+                  </p>
+                  <Button variant="primary" onPress={() => setTerrainModalOpen(true)}>
+                    Ouvrir les observations de terrain
+                  </Button>
+                  <ul className="flex flex-col gap-1.5 text-xs text-gray-400">
+                    {robotConfigs.map(r => {
+                      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
+                      const done = physicalRobotData[r.uuid]?.observation != null;
+                      return (
+                        <li key={r.uuid} className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorDef?.hex }} />
+                          {colorDef?.label} — {done ? 'observé' : 'à observer'}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : !showTree && !showManual ? (
                 <div className="w-full h-full flex items-center justify-center">
                   <p className="text-gray-300 text-sm">Cette étape sera bientôt disponible</p>
                 </div>
@@ -513,6 +547,7 @@ export function SoftwareMain() {
                   <DecisionTree
                     ref={decisionTreeRef}
                     testing={testing}
+                    editable={stepDef.features.treeEditable}
                     onValidationChange={setErrors}
                     onActiveQuestionChange={handleActiveQuestion}
                     onLeafReached={handleLeafReached}
@@ -532,14 +567,21 @@ export function SoftwareMain() {
 
           <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '1 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Données</h3>
-            <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-              <p className="text-gray-300 text-sm">À définir</p>
-            </div>
+            {stepDef.features.dataTable ? (
+              <DataTable />
+            ) : (
+              <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                <p className="text-gray-300 text-sm">À définir</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {stepDef.features.teamSwitch && <TeamModal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} />}
+      {stepDef.features.observationEntry && (
+        <TerrainModal isOpen={terrainModalOpen} onClose={() => setTerrainModalOpen(false)} />
+      )}
     </div>
   );
 }

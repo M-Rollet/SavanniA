@@ -24,6 +24,7 @@ export type RootNodeData = {
   hasChild: boolean;
   onAddFirstChild: () => void;
   testing: boolean;
+  editable: boolean;
   highlighted: boolean;
 };
 
@@ -31,7 +32,7 @@ export type RootNodeData = {
 const NODE_SIZE = 100;
 
 export function RootNode({ data }: NodeProps) {
-  const { colorId, robotLabel, hasChild, onAddFirstChild, testing, highlighted } = data as RootNodeData;
+  const { colorId, robotLabel, hasChild, onAddFirstChild, testing, editable, highlighted } = data as RootNodeData;
   const icon = ICONS[colorId] ?? thymioDefault;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -51,7 +52,7 @@ export function RootNode({ data }: NodeProps) {
 
       <Handle type="source" position={Position.Bottom} id="out" />
 
-      {!hasChild && !testing && (
+      {!hasChild && editable && !testing && (
         <div
           className="absolute left-1/2 flex flex-col items-center gap-1"
           style={{ top: 'calc(100% + 24px)', transform: 'translateX(-50%)' }}

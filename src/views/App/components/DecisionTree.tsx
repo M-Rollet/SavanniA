@@ -297,33 +297,28 @@ export function clearSavedTree() {
 const INITIAL_TREE: { nodes: Node[]; edges: Edge[] } = (() => {
   const edges: Edge[] = [
     { id: 'root-out-d1', source: 'root', sourceHandle: 'out', target: 'd1' },
-    { id: 'd1-yes-l1',   source: 'd1',   sourceHandle: 'yes', target: 'l1' }, // battery low → KO
-    { id: 'd1-no-d2',    source: 'd1',   sourceHandle: 'no',  target: 'd2' },
-    { id: 'd2-yes-l2',   source: 'd2',   sourceHandle: 'yes', target: 'l2' },
-    { id: 'd2-no-l3',    source: 'd2',   sourceHandle: 'no',  target: 'l3' },
+    { id: 'd1-yes-l1', source: 'd1', sourceHandle: 'yes', target: 'l1' }, // battery low → KO
+    { id: 'd1-no-d2', source: 'd1', sourceHandle: 'no', target: 'd2' },
+    { id: 'd2-yes-l2', source: 'd2', sourceHandle: 'yes', target: 'l2' },
+    { id: 'd2-no-l3', source: 'd2', sourceHandle: 'no', target: 'l3' },
   ];
   const nodes: Node[] = [
-    { id: 'root', type: 'root',     position: { x: 0, y: 0 }, data: {} },
-    { id: 'd1',   type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'battery_low' } },
-    { id: 'd2',   type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
-    { id: 'l1',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: false } },
-    { id: 'l2',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: true  } },
-    { id: 'l3',   type: 'leaf',     position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} },
+    { id: 'd1', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'battery_low' } },
+    { id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
+    { id: 'l1', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'l2', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
+    { id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
   ];
   return { nodes: layoutTree(nodes, edges), edges };
 })();
-
 
 function loadTree(): { nodes: Node[]; edges: Edge[] } {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as { nodes: Node[]; edges: Edge[] };
-      if (
-        Array.isArray(parsed.nodes) &&
-        Array.isArray(parsed.edges) &&
-        parsed.nodes.some(n => n.id === 'root')
-      ) {
+      if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges) && parsed.nodes.some(n => n.id === 'root')) {
         // Re-run layout so positions are always consistent regardless of what was saved.
         return { nodes: layoutTree(parsed.nodes, parsed.edges), edges: parsed.edges };
       }
@@ -337,6 +332,8 @@ function loadTree(): { nodes: Node[]; edges: Edge[] } {
 // ── Component ───────────────────────────────────────────────
 type DecisionTreeProps = {
   testing: boolean;
+  /** Whether the tree structure (nodes, questions, decisions) can be edited. Defaults to true. */
+  editable?: boolean;
   onValidationChange?: (errors: ValidationError[]) => void;
   onActiveQuestionChange?: (questionId: string | null) => void;
   /** Fired once when the active test path reaches a leaf node. */
@@ -344,7 +341,7 @@ type DecisionTreeProps = {
 };
 
 export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
-  { testing, onValidationChange, onActiveQuestionChange, onLeafReached },
+  { testing, editable = true, onValidationChange, onActiveQuestionChange, onLeafReached },
   ref
 ) {
   const { controledRobot, robotConfigs } = useScenario();
@@ -701,6 +698,7 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             hasChild: edges.some(e => e.source === 'root'),
             onAddFirstChild: addFirstChild,
             testing,
+            editable,
             highlighted: highlightedNodeId === node.id,
           };
           return { ...node, data: d as Record<string, unknown> };
@@ -721,10 +719,11 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             onSetActiveHandle,
             onDelete: deleteNode,
             testing,
+            editable,
             activeHandle: activeHandles.get(node.id) ?? null,
             isOnActivePath: activePath.has(node.id),
           };
-          const hasAddButtons = !testing && (!d.usedHandles.yes || !d.usedHandles.no);
+          const hasAddButtons = editable && !testing && (!d.usedHandles.yes || !d.usedHandles.no);
           return { ...node, data: d as Record<string, unknown>, height: getNodeHeight('decision', hasAddButtons) };
         }
         if (node.type === 'leaf') {
@@ -733,6 +732,7 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             isOnActivePath: activePath.has(node.id),
             highlighted: highlightedNodeId === node.id,
             testing,
+            editable,
             onChangeDecision,
             onDelete: deleteNode,
           };
@@ -751,6 +751,7 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       onSetActiveHandle,
       onChangeDecision,
       testing,
+      editable,
       activeHandles,
       activePath,
       highlightedNodeId,
