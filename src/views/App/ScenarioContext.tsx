@@ -5,8 +5,7 @@ import { tdmConnectionEvents } from '../../Entities/ThymioManager/tdmConnectionE
 import type { Users } from '../../Entities/ThymioManager/Model/users.model';
 import { useLocalStorage } from '../../helpers/useLocalStorage';
 import { clearSavedTree } from './components/DecisionTree';
-
-export type Step = 'welcome' | 'team-split' | 'software-main' | 'data-management' | 'final-main';
+import { getStepDef, STEP_DEFS, type RobotEntry, type ExternalRobotEntry } from './steps/stepDefinitions';
 
 export const ROBOT_COLORS = [
   { id: 'red', label: 'Rouge', hex: '#ef4444' },
@@ -28,8 +27,12 @@ export type RobotTeam = 'terrain' | 'bureau';
 
 type ScenarioState = {
   user: Users;
-  step: Step;
-  go: (step: Step) => void;
+  /** 0 = welcome screen, 1-7 = main activity steps (see stepDefinitions.ts). */
+  stepIndex: number;
+  /** Advance to the next step, if the current step's canAdvance condition is met. */
+  advanceStep: () => void;
+  /** Jump directly to a given step (used to leave the welcome screen, or to go back). */
+  goToStep: (index: number) => void;
   controledRobot: string;
   /** Switch the active robot without re-initializing. */
   selectRobot: (uuid: string) => void;
@@ -40,11 +43,15 @@ type ScenarioState = {
   ) => Promise<void>;
   robotConfigs: RobotConfig[];
   setRobotConfigs: (configs: RobotConfig[]) => void;
-  /** Map of robot UUID → team assignment. Empty until assignTeams() is called. */
+  /** Map of robot UUID → team assignment. Empty until set via the team-switch modal (step 4+). */
   robotTeams: Record<string, RobotTeam>;
   setRobotTeams: (teams: Record<string, RobotTeam>) => void;
-  /** Assign first half of robotConfigs to 'terrain', second half to 'bureau'. */
-  assignTeams: () => void;
+  /** Test results & terrain observations for real robots, keyed by Thymio UUID. */
+  physicalRobotData: Record<string, RobotEntry>;
+  setPhysicalRobotData: (data: Record<string, RobotEntry>) => void;
+  /** Injected non-physical robot dataset (step 5+), kept separate to avoid UUID collisions. */
+  externalDataset: ExternalRobotEntry[];
+  setExternalDataset: (data: ExternalRobotEntry[]) => void;
   resetApp: () => void;
   isSettingsOpen: boolean;
   openSettings: () => void;
@@ -56,15 +63,20 @@ const user = thymioManagerFactory({ user: 'AllUser', activity: 'ThymioIA', hosts
 const ScenarioContext = createContext<ScenarioState | null>(null);
 
 export function ScenarioProvider({ children }: { children: ReactNode }) {
-  const [step, setStep] = useLocalStorage<Step>('scenario:step', 'welcome');
+  const [stepIndex, setStepIndex] = useLocalStorage<number>('scenario:stepIndex', 0);
   const [controledRobot, setControledRobot] = useLocalStorage<string>('scenario:robot', '');
   const [robotConfigs, setRobotConfigs] = useLocalStorage<RobotConfig[]>('scenario:robots', []);
   const [robotTeams, setRobotTeams] = useLocalStorage<Record<string, RobotTeam>>('scenario:teams', {});
+  const [physicalRobotData, setPhysicalRobotData] = useLocalStorage<Record<string, RobotEntry>>(
+    'scenario:physicalRobotData',
+    {}
+  );
+  const [externalDataset, setExternalDataset] = useLocalStorage<ExternalRobotEntry[]>('scenario:externalDataset', []);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
     let errorToastKey: string | null = null;
-    const unsub = tdmConnectionEvents.subscribe((connected) => {
+    const unsub = tdmConnectionEvents.subscribe(connected => {
       if (connected) {
         if (errorToastKey) {
           Toast.toast.close(errorToastKey);
@@ -79,7 +91,9 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         });
       }
     });
-    return () => { unsub(); };
+    return () => {
+      unsub();
+    };
   }, []);
 
   const initializeRobot = useCallback(
@@ -95,14 +109,23 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     [setControledRobot]
   );
 
-  const assignTeams = useCallback(() => {
-    const half = Math.ceil(robotConfigs.length / 2);
-    const teams: Record<string, RobotTeam> = {};
-    robotConfigs.forEach((r, i) => {
-      teams[r.uuid] = i < half ? 'terrain' : 'bureau';
-    });
-    setRobotTeams(teams);
-  }, [robotConfigs, setRobotTeams]);
+  const goToStep = useCallback(
+    (index: number) => {
+      setStepIndex(index);
+    },
+    [setStepIndex]
+  );
+
+  const advanceStep = useCallback(() => {
+    const current = getStepDef(stepIndex);
+    if (stepIndex >= STEP_DEFS.length) {
+      return;
+    }
+    if (!current.canAdvance({ physicalRobotData, robotConfigs })) {
+      return;
+    }
+    setStepIndex(stepIndex + 1);
+  }, [stepIndex, physicalRobotData, robotConfigs, setStepIndex]);
 
   // Keep a ref so the auto-assign effect always reads latest teams without re-triggering.
   const robotTeamsRef = useRef(robotTeams);
@@ -136,18 +159,21 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const resetApp = () => {
     clearSavedTree();
-    setStep('welcome');
+    setStepIndex(0);
     setControledRobot('');
     setRobotConfigs([]);
     setRobotTeams({});
+    setPhysicalRobotData({});
+    setExternalDataset([]);
   };
 
   return (
     <ScenarioContext.Provider
       value={{
         user,
-        step,
-        go: setStep,
+        stepIndex,
+        advanceStep,
+        goToStep,
         controledRobot,
         selectRobot,
         initializeRobot,
@@ -155,7 +181,10 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
         setRobotConfigs,
         robotTeams,
         setRobotTeams,
-        assignTeams,
+        physicalRobotData,
+        setPhysicalRobotData,
+        externalDataset,
+        setExternalDataset,
         resetApp,
         isSettingsOpen,
         openSettings: () => setIsSettingsOpen(true),

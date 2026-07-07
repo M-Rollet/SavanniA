@@ -1,5 +1,4 @@
 import './App.css';
-import { ReactFlowProvider } from '@xyflow/react';
 import { Toast } from '@heroui/react/toast';
 import { ScenarioProvider, useScenario } from './ScenarioContext';
 import { Welcome } from './steps/Welcome';
@@ -8,20 +7,8 @@ import { SettingsOverlay } from './components/SettingsOverlay';
 import { SettingsButton } from './components/SettingsButton';
 
 function ScenarioRouter() {
-  const { step } = useScenario();
-  return (
-    <div className="scenario">
-      {step === 'welcome' && <Welcome />}
-      {step === 'team-split' && <TeamSplit />}
-      {step === 'software-main' && <SoftwareMain />}
-      {step === 'data-management' && <DataManagement />}
-      {step === 'final-main' && (
-        <ReactFlowProvider>
-          <FinalMain />
-        </ReactFlowProvider>
-      )}
-    </div>
-  );
+  const { stepIndex } = useScenario();
+  return <div className="scenario">{stepIndex === 0 ? <Welcome /> : <SoftwareMain />}</div>;
 }
 
 function App() {

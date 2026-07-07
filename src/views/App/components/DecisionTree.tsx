@@ -339,10 +339,12 @@ type DecisionTreeProps = {
   testing: boolean;
   onValidationChange?: (errors: ValidationError[]) => void;
   onActiveQuestionChange?: (questionId: string | null) => void;
+  /** Fired once when the active test path reaches a leaf node. */
+  onLeafReached?: (nodeId: string) => void;
 };
 
 export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
-  { testing, onValidationChange, onActiveQuestionChange },
+  { testing, onValidationChange, onActiveQuestionChange, onLeafReached },
   ref
 ) {
   const { controledRobot, robotConfigs } = useScenario();
@@ -361,6 +363,7 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onValidationRef = useRef(onValidationChange);
   const onActiveQuestionRef = useRef(onActiveQuestionChange);
+  const onLeafReachedRef = useRef(onLeafReached);
   useLayoutEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
@@ -376,6 +379,9 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
   useLayoutEffect(() => {
     onActiveQuestionRef.current = onActiveQuestionChange;
   }, [onActiveQuestionChange]);
+  useLayoutEffect(() => {
+    onLeafReachedRef.current = onLeafReached;
+  }, [onLeafReached]);
 
   useEffect(() => {
     if (!testing) {
@@ -664,6 +670,9 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
     const cx = node.position.x + getNodeWidth(node.type) / 2;
     const cy = node.position.y + getNodeHeight(node.type) / 2;
     setCenter(cx, cy, { zoom: FOCUS_ZOOM, duration: PAN_DURATION });
+    if (node.type === 'leaf') {
+      onLeafReachedRef.current?.(node.id);
+    }
   }, [frontierNodeId, setCenter]);
 
   // ── Active path ───────────────────────────────────────────

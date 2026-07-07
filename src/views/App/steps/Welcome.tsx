@@ -1,45 +1,20 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Card, Button } from '@heroui/react';
+import { Button } from '@heroui/react';
 import { ArrowRight, Gear } from '@gravity-ui/icons';
-import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
+import { useScenario } from '../ScenarioContext';
 import { MIN_ROBOTS } from '../robotProfiles';
 
 import background from '../../../assets/welcome_back.jpg';
 import logo from '../../../assets/logo.svg';
 import thymioLoop from '../../../assets/thymio_loop.png';
 
-const colorHex = Object.fromEntries(ROBOT_COLORS.map(c => [c.id, c.hex]));
-
-function ColorDots({ robots }: { robots: { uuid: string; color: string }[] }) {
-  return (
-    <div className="flex gap-2 flex-wrap">
-      {robots.map(r => (
-        <span
-          key={r.uuid}
-          className="inline-block w-9 h-9 rounded-full border-2 border-white shadow-md"
-          style={{ backgroundColor: colorHex[r.color as keyof typeof colorHex] }}
-        />
-      ))}
-    </div>
-  );
-}
-
 const slide = { duration: 0.4, ease: 'easeInOut' as const };
 
 export function Welcome() {
-  const { go, robotConfigs, robotTeams, assignTeams } = useScenario();
+  const { goToStep, robotConfigs } = useScenario();
   const isConfigured = robotConfigs.length >= MIN_ROBOTS;
-  const [phase, setPhase] = useState<'main' | 'intro' | 'team-split'>('main');
-
-  const half = Math.ceil(robotConfigs.length / 2);
-  const teamsReady = Object.keys(robotTeams).length > 0;
-  const terrainRobots = teamsReady
-    ? robotConfigs.filter(r => robotTeams[r.uuid] === 'terrain')
-    : robotConfigs.slice(0, half);
-  const bureauRobots = teamsReady
-    ? robotConfigs.filter(r => robotTeams[r.uuid] === 'bureau')
-    : robotConfigs.slice(half);
+  const [phase, setPhase] = useState<'main' | 'intro'>('main');
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">
@@ -90,7 +65,8 @@ export function Welcome() {
               </Button>
               {!isConfigured && (
                 <p className="text-black/50 text-sm mt-3 drop-shadow">
-                  Configurez au moins {MIN_ROBOTS} robots via <Gear className="inline align-middle" /> avant de commencer.
+                  Configurez au moins {MIN_ROBOTS} robots via <Gear className="inline align-middle" /> avant de
+                  commencer.
                 </p>
               )}
             </motion.div>
@@ -123,76 +99,11 @@ export function Welcome() {
                   felis. Maecenas malesuada purus ac ullamcorper porttitor. In eget ultrices neque.
                 </p>
                 <div className="flex justify-end">
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      assignTeams();
-                      setPhase('team-split');
-                    }}
-                  >
-                    Suivant
+                  <Button variant="primary" onClick={() => goToStep(1)}>
+                    C'est parti
                     <ArrowRight />
                   </Button>
                 </div>
-              </div>
-            </motion.div>
-          )}
-
-          {phase === 'team-split' && (
-            <motion.div
-              key="team-split"
-              className="flex flex-col items-center gap-8 w-full px-12"
-              initial={{ opacity: 0, x: 120 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={slide}
-            >
-              <p className="text-black/80 text-xl font-medium text-center drop-shadow max-w-3xl">
-                Pour commencer, formez deux équipes.
-                <br />
-                Vous vous rejoindrez plus tard pour partager vos découvertes.
-              </p>
-
-              <div className="flex gap-6 w-full max-w-4xl">
-                {/* Card 1 — Équipe de terrain */}
-                <Card className="flex-1 shadow-lg">
-                  <Card.Content className="flex flex-col gap-4 p-6">
-                    <h3 className="text-xl font-semibold">Équipe de terrain</h3>
-                    <p className="text-gray-600 flex-1">
-                      Teste les robots sur le circuit et observe leur comportement. Tes découvertes seront utiles pour
-                      créer une IA de tri des robots !
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      <p className="text-gray-700 font-medium text-sm">Prends ces robots avec toi :</p>
-                      <ColorDots robots={terrainRobots} />
-                    </div>
-                  </Card.Content>
-                  <Card.Footer className="px-6 pb-6 pt-0">
-                    <Button variant="outline" isDisabled className="w-full">
-                      Rendez-vous au circuit
-                    </Button>
-                  </Card.Footer>
-                </Card>
-
-                {/* Card 2 — Équipe de bureau */}
-                <Card className="flex-1 shadow-lg">
-                  <Card.Content className="flex flex-col gap-4 p-6">
-                    <h3 className="text-xl font-semibold">Équipe de bureau</h3>
-                    <p className="text-gray-600 flex-1">
-                      Découvre les spécificités des robots et les arbres de décision. Utilise-les pour créer une IA de
-                      tri de robots.
-                    </p>
-                    <div className="flex flex-col gap-2">
-                      <p className="text-gray-700 font-medium text-sm">Garde ces robots :</p>
-                      <ColorDots robots={bureauRobots} />
-                    </div>
-                  </Card.Content>
-                  <Card.Footer className="px-6 pb-6 pt-0">
-                    <Button variant="primary" onClick={() => go('software-main')} className="w-full">
-                      C'est parti
-                      <ArrowRight />
-                    </Button>
-                  </Card.Footer>
-                </Card>
               </div>
             </motion.div>
           )}

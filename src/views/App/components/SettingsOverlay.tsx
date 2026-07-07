@@ -7,7 +7,7 @@ import { MIN_ROBOTS } from '../robotProfiles';
 const PASSWORD = 'mobots';
 
 export function SettingsOverlay() {
-  const { user, robotConfigs, setRobotConfigs, resetApp, isSettingsOpen, closeSettings, step } = useScenario();
+  const { user, robotConfigs, setRobotConfigs, resetApp, isSettingsOpen, closeSettings, stepIndex } = useScenario();
 
   const [password, setPassword] = useState('');
   const [unlocked, setUnlocked] = useState(false);
@@ -185,7 +185,7 @@ export function SettingsOverlay() {
                   {robotConfigs.length > 0 && (
                     <div className="flex flex-col gap-2 border-t pt-4">
                       <p className="text-sm font-medium text-gray-700">Robots configurés</p>
-                      {step === 'software-main' && robotConfigs.length <= MIN_ROBOTS && (
+                      {stepIndex >= 1 && robotConfigs.length <= MIN_ROBOTS && (
                         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                           Attention : moins de {MIN_ROBOTS} robots réduit la richesse de l'activité.
                         </p>
