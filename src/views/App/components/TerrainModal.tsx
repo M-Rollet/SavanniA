@@ -12,6 +12,8 @@ import thymioGreen from '../../../assets/thymio_icon_green.svg';
 import thymioYellow from '../../../assets/thymio_icon_yellow.svg';
 import thymioCyan from '../../../assets/thymio_icon_cyan.svg';
 import thymioPink from '../../../assets/thymio_icon_pink.svg';
+import buttonImage from '../../../assets/thymio_button.png';
+import circuitImage from '../../../assets/circuit.png';
 
 const THYMIO_ICONS: Record<string, string> = {
   red: thymioRed,
@@ -87,10 +89,12 @@ export function TerrainModal() {
             <Modal.Body className="flex gap-8">
               {/* Left — explanations */}
               <div className="flex-1 flex flex-col gap-3">
+                <img src={circuitImage} alt="" className="w-100 max-w-full mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
                   Direction le circuit ! Lance chaque robot sur le parcours et observe attentivement son
                   comportement. Utilise le bouton central pour lancer le test d'un robot.
                 </p>
+                <img src={buttonImage} alt="" className="w-50 max-w-full rounded-xl mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
                   Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc). Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
                 </p>

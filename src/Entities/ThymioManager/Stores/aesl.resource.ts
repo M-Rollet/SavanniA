@@ -56,6 +56,7 @@ var TICKS_BATTERY_FLASH     = 5
 var TICKS_FLICKER           = 2
 var TICKS_CHASE             = 12
 var field_mode    = 0
+var field_step    = 0
 var seq_step      = SEQ_NULL
 var seq_type      = SEQ_NULL
 var motor_noise   = 0
@@ -91,6 +92,19 @@ call sound.system(-1)
 callsub apply_battery
 
 emit ready
+
+onevent button.center
+    if field_mode == 1 then
+        call leds.buttons(32, 32, 32, 32)
+        if button.center == 0 then
+            call leds.buttons(0, 0, 0, 0)
+            if field_step == 0 then
+                field_step = 1
+            else
+                field_step = 0
+            end
+        end
+    end
 
 onevent motor
     if motor_noise == 1 then
@@ -378,7 +392,7 @@ onevent prox
         callsub apply_battery
     end
 
-    if line_follow == 1 then
+    if field_step == 1 then
         p1=prox.ground.delta[1]
         callsub statistics
         call math.muldiv(ndev, 100, p1-mean, vari)

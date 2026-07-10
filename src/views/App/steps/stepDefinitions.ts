@@ -77,7 +77,9 @@ export type ExternalRobotEntry = RobotEntry & { id: string; label: string };
  */
 export function categorizeConfig(cfg: Partial<Record<Criterion, number>>): 'ready' | 'repair' {
   const ready =
-    cfg.light_working === 1 && cfg.ir_working === 1 && (cfg.battery_level ?? 0) > 0 &&
+    cfg.light_working === 1 &&
+    cfg.ir_working === 1 &&
+    (cfg.battery_level ?? 0) > 0 &&
     (cfg.motor_noise === 0 || (cfg.battery_level ?? 0) > 1);
   return ready ? 'ready' : 'repair';
 }
@@ -202,19 +204,6 @@ export const EXTERNAL_DATASET: ExternalRobotEntry[] = buildEntries([
   },
 ]);
 
-/** A fresh set of robots (unseen during training) used for the step 7 final test. */
-export const FINAL_TEST_SET: ExternalRobotEntry[] = buildEntries([
-  { id: 'final-titan', label: 'Titan', cfg: { light_working: 1, ir_working: 1, motor_noise: 0, battery_level: 2 } },
-  { id: 'final-comet', label: 'Comet', cfg: { light_working: 1, ir_working: 1, motor_noise: 1, battery_level: 1 } },
-  { id: 'final-juno', label: 'Juno', cfg: { light_working: 0, ir_working: 1, motor_noise: 0, battery_level: 1 } },
-  { id: 'final-zephyr', label: 'Zephyr', cfg: { light_working: 1, ir_working: 1, motor_noise: 0, battery_level: 0 } },
-  {
-    id: 'final-solstice',
-    label: 'Solstice',
-    cfg: { light_working: 1, ir_working: 0, motor_noise: 0, battery_level: 2 },
-  },
-]);
-
 /** A decision tree built step-by-step in algorithm mode (step 6). */
 export type AlgoTree =
   | { type: 'pending' }
@@ -231,24 +220,6 @@ export function isAlgoTreeComplete(tree: AlgoTree): boolean {
   return isAlgoTreeComplete(tree.yes) && isAlgoTreeComplete(tree.no);
 }
 
-/** Classifies a set of test results by walking a completed algorithm tree. */
-export function classifyWithAlgoTree(
-  tree: AlgoTree,
-  testResults: Partial<Record<Criterion, number>>
-): 'ready' | 'repair' | null {
-  if (tree.type === 'pending') {
-    return null;
-  }
-  if (tree.type === 'leaf') {
-    return tree.label;
-  }
-  const answer = answerFromTestResults(tree.questionId, testResults);
-  if (!answer) {
-    return null;
-  }
-  return classifyWithAlgoTree(answer === 'yes' ? tree.yes : tree.no, testResults);
-}
-
 export type TutorialItem = { id: string; text: string };
 
 export type StepFeatures = {
@@ -262,6 +233,8 @@ export type StepFeatures = {
   treeEditable: boolean;
   /** Data table of collected robot test results is shown. */
   dataTable: boolean;
+  /** Data table rows can be opened and edited (vs. read-only). */
+  dataEditable: boolean;
   /** Terrain observation entry form is shown. */
   observationEntry: boolean;
   /** External (non-physical) robot dataset is injected into the tree/table. */
@@ -296,6 +269,7 @@ const NO_FEATURES: StepFeatures = {
   treeVisible: false,
   treeEditable: false,
   dataTable: false,
+  dataEditable: false,
   observationEntry: false,
   externalData: false,
   algorithmMode: false,
@@ -307,23 +281,31 @@ export const STEP_DEFS: StepDef[] = [
     index: 1,
     label: 'Opération manuelle',
     shortLabel: 'Manuel',
-    features: { ...NO_FEATURES, manualOp: true },
+    features: { ...NO_FEATURES, manualOp: true, dataTable: true, dataEditable: true },
     canAdvance: () => true,
     tutorial: [
-      { id: 'manual-intro', text: "Voici l'interface de contrôle manuel. Sélectionne un robot et teste les fonctionnalités. Tu peux remplir tes observations dans le tableau ci-dessous." },
+      {
+        id: 'manual-intro',
+        text: "Voici l'interface de contrôle manuel. Sélectionne un robot et teste les fonctionnalités. Tu peux remplir tes observations dans le tableau ci-dessous.",
+      },
     ],
   },
   {
     index: 2,
     label: 'Arbre de décision',
     shortLabel: 'Découverte',
-    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true },
+    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true, dataEditable: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 &&
       robotConfigs.every(
         ({ uuid }) => physicalRobotData[uuid]?.tested === true && hasAllCriteria(physicalRobotData[uuid])
       ),
-    tutorial: [{ id: 'discovery-intro', text: "Voici le programme de tri des robots. Il s'agit d'un arbre de décision avec plusieurs questions. Sélectionne chaque robot et regarde comment cela fonctionne. Après avoir tout testé et complété toutes les observations, tu pourras passer à la suite." }],
+    tutorial: [
+      {
+        id: 'discovery-intro',
+        text: "Voici le programme de tri des robots. Il s'agit d'un arbre de décision avec plusieurs questions. Sélectionne chaque robot et regarde comment cela fonctionne. Après avoir tout testé et complété toutes les observations, tu pourras passer à la suite.",
+      },
+    ],
   },
   {
     index: 3,
@@ -349,7 +331,12 @@ export const STEP_DEFS: StepDef[] = [
     },
     canAdvance: ({ treeAccuracy }) =>
       treeAccuracy !== null && treeAccuracy.total > 0 && treeAccuracy.correct === treeAccuracy.total,
-    tutorial: [{ id: 'refine-intro', text: "Certaines observations sur le terrain ne correspondent pas aux résultats de l'arbre de décision. Modifie le pour que les robots soient correctement triés." }],
+    tutorial: [
+      {
+        id: 'refine-intro',
+        text: "Certaines observations sur le terrain ne correspondent pas aux résultats de l'arbre de décision. Modifie le pour que les robots soient correctement triés.",
+      },
+    ],
   },
   {
     index: 5,
@@ -376,7 +363,10 @@ export const STEP_DEFS: StepDef[] = [
     features: { ...NO_FEATURES, algorithmMode: true, dataTable: true },
     canAdvance: ({ algorithmTree }) => algorithmTree !== null && isAlgoTreeComplete(algorithmTree),
     tutorial: [
-      { id: 'algo-intro', text: "Il est difficile de contruire l'arbre de décision à la main. Nous allons essayer de trouver une méthode pour le faire ! Teste toutes les questions possible et choisis celle qui te semble la plus pertinente." },
+      {
+        id: 'algo-intro',
+        text: "Il est difficile de contruire l'arbre de décision à la main. Nous allons essayer de trouver une méthode pour le faire ! Teste toutes les questions possible et choisis celle qui te semble la plus pertinente.",
+      },
     ],
   },
   {

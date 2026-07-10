@@ -480,7 +480,7 @@ export function SoftwareMain() {
       {/* ── Main ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left — Programme (2/3) */}
-        <div className="flex flex-col gap-4 p-4 border-r overflow-hidden" style={{ flex: '5 1 0' }}>
+        <div className="flex flex-col gap-4 p-4 border-r overflow-hidden" style={{ flex: '4 1 0' }}>
           <div className="flex flex-col flex-1 min-h-0">
             {/* Action row */}
             <div className="shrink-0 flex items-center gap-3">
@@ -614,23 +614,23 @@ export function SoftwareMain() {
 
         {/* Right — Timeline + Data (1/3) */}
         <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0' }}>
-          <div className="flex flex-col gap-3 p-6 border-b overflow-y-auto" style={{ flex: '1 1 0' }}>
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Journal de mission</h3>
+          <div className="flex flex-col gap-3 p-6 border-b overflow-y-auto" style={{ flex: '3 1 0' }}>
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">
+              Journal de mission
+            </h3>
             <TimelinePanel />
           </div>
 
-          {stepIndex > 1 && (
-            <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '1 1 0' }}>
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
-              {stepDef.features.dataTable ? (
-                <DataTable />
-              ) : (
-                <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                  <p className="text-gray-300 text-sm">À définir</p>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '2 1 0' }}>
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
+            {stepDef.features.dataTable ? (
+              <DataTable />
+            ) : (
+              <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                <p className="text-gray-300 text-sm">À définir</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

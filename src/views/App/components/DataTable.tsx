@@ -67,7 +67,7 @@ export function DataTable() {
     ...externalDataset.map((e, i) => ({
       key: e.id,
       label: e.label,
-      color: undefined,
+      color: '#94a3b8',
       uuid: undefined,
       entry: e as RobotEntry,
       isExternal: true,

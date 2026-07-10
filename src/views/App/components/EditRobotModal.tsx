@@ -1,7 +1,7 @@
 import { Modal, useOverlayState, Button } from '@heroui/react';
 import { Pencil, Eye, Lock } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
-import { EMPTY_ROBOT_ENTRY, type Criterion, type RobotEntry } from '../steps/stepDefinitions';
+import { EMPTY_ROBOT_ENTRY, getStepDef, type Criterion, type RobotEntry } from '../steps/stepDefinitions';
 
 interface Props {
   uuid: string | null;
@@ -68,7 +68,7 @@ function ToggleRow({
 export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
   const { stepIndex, physicalRobotData, setPhysicalRobotData } = useScenario();
   const isOpen = uuid !== null;
-  const editableStep = !entryOverride && stepIndex === 2;
+  const editableStep = !entryOverride && getStepDef(stepIndex).features.dataEditable;
 
   const state = useOverlayState({
     isOpen,
