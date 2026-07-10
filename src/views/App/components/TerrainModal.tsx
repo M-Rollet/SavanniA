@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Modal, useOverlayState, Button } from '@heroui/react';
 import { CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
@@ -47,6 +48,14 @@ export function TerrainModal() {
     [observationCheckFailed, robotConfigs, physicalRobotData]
   );
 
+  // Robots only appear once the user has read the explanation and pressed "C'est parti".
+  const [started, setStarted] = useState(false);
+  useEffect(() => {
+    if (stepIndex !== 3) {
+      setStarted(false);
+    }
+  }, [stepIndex]);
+
   // Only advanceStep() (via the "Continuer" button below) can leave this step — no backdrop/Escape dismissal.
   const state = useOverlayState({ isOpen, onOpenChange: () => {} });
 
@@ -91,69 +100,107 @@ export function TerrainModal() {
               <div className="flex-1 flex flex-col gap-3">
                 <img src={circuitImage} alt="" className="w-100 max-w-full mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
-                  Direction le circuit ! Lance chaque robot sur le parcours et observe attentivement son
-                  comportement. Utilise le bouton central pour lancer le test d'un robot.
+                  Direction le circuit ! Lance chaque robot sur le parcours et observe attentivement son comportement.
+                  Utilise le bouton central pour lancer le test d'un robot.
                 </p>
-                <img src={buttonImage} alt="" className="w-50 max-w-full rounded-xl mx-auto my-4" />
+                <img src={buttonImage} alt="" className="w-100 max-w-full rounded-xl mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
-                  Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc). Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
+                  Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc).
+                  Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
                 </p>
               </div>
 
+              <div className="w-px bg-gray-200" />
+
               {/* Right — robots, 2 wide × 3 tall grid */}
-              <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-3 content-start">
-                {robotConfigs.length === 0 && <p className="text-gray-400 text-sm italic">Aucun robot configuré</p>}
-                {robotConfigs.map(r => {
-                  const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
-                  const entry = physicalRobotData[r.uuid];
-                  const category = entry?.observation?.category ?? null;
-                  const isWrong = wrongUuids?.has(r.uuid) ?? false;
-                  return (
-                    <div
-                      key={r.uuid}
-                      className={`flex flex-col gap-1.5 border rounded-xl p-2.5 h-full ${
-                        isWrong ? 'bg-yellow-50 border-yellow-300' : ''
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <img src={THYMIO_ICONS[r.color]} alt="" className="w-7 h-7 shrink-0" />
-                        <span className="text-sm font-medium">{colorDef?.label}</span>
-                      </div>
-                      <div className="node flex gap-1.5">
-                        <button
-                          data-value="true"
-                          data-selected={category === 'ready' || undefined}
-                          onClick={() => setCategory(r.uuid, 'ready')}
-                          className="decision-btn flex-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all"
-                        >
-                          <CheckShape width={12} height={12} />
-                          Prêt à partir
-                        </button>
-                        <button
-                          data-value="false"
-                          data-selected={category === 'repair' || undefined}
-                          onClick={() => setCategory(r.uuid, 'repair')}
-                          className="decision-btn flex-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all"
-                        >
-                          <Ban width={12} height={12} />À réparer
-                        </button>
-                      </div>
-                      <textarea
-                        value={entry?.observation?.notes ?? ''}
-                        onChange={e => setNotes(r.uuid, e.target.value)}
-                        placeholder="Notes…"
-                        className="w-full flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
-                      />
-                    </div>
-                  );
-                })}
+              <div className="flex-1 flex flex-col gap-3">
+                {started && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <h3 className="text-sm font-semibold text-gray-700">Statut de chaque robot</h3>
+                    <p className="text-gray-500 text-xs mt-0.5">
+                      Indique si chaque robot est prêt à partir ou doit être réparé, et note ce que tu observes.
+                    </p>
+                  </motion.div>
+                )}
+                <div className="flex-1 grid grid-cols-2 grid-rows-3 gap-3 content-start">
+                  {started && robotConfigs.length === 0 && (
+                    <p className="text-gray-400 text-sm italic">Aucun robot configuré</p>
+                  )}
+                  <AnimatePresence>
+                    {started &&
+                      robotConfigs.map((r, i) => {
+                        const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
+                        const entry = physicalRobotData[r.uuid];
+                        const category = entry?.observation?.category ?? null;
+                        const isWrong = wrongUuids?.has(r.uuid) ?? false;
+                        return (
+                          <motion.div
+                            key={r.uuid}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.35, delay: i * 0.08 }}
+                            className={`flex flex-col gap-1.5 border rounded-xl p-2.5 h-full ${
+                              isWrong ? 'bg-yellow-50 border-yellow-300' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <img src={THYMIO_ICONS[r.color]} alt="" className="w-7 h-7 shrink-0" />
+                              <span className="text-sm font-medium">{colorDef?.label}</span>
+                            </div>
+                            <div className="node flex gap-1.5">
+                              <button
+                                data-value="true"
+                                data-selected={category === 'ready' || undefined}
+                                onClick={() => setCategory(r.uuid, 'ready')}
+                                className="decision-btn flex-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all"
+                              >
+                                <CheckShape width={12} height={12} />
+                                Prêt à partir
+                              </button>
+                              <button
+                                data-value="false"
+                                data-selected={category === 'repair' || undefined}
+                                onClick={() => setCategory(r.uuid, 'repair')}
+                                className="decision-btn flex-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-all"
+                              >
+                                <Ban width={12} height={12} />À réparer
+                              </button>
+                            </div>
+                            <textarea
+                              value={entry?.observation?.notes ?? ''}
+                              onChange={e => setNotes(r.uuid, e.target.value)}
+                              placeholder="Notes…"
+                              className="w-full flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none"
+                            />
+                          </motion.div>
+                        );
+                      })}
+                  </AnimatePresence>
+                </div>
               </div>
             </Modal.Body>
 
-            <Modal.Footer>
-              <Button variant="primary" isDisabled={!canContinue} onPress={handleContinue}>
-                Continuer
-              </Button>
+            <Modal.Footer className="w-full">
+              <div className="flex-1 flex justify-end">
+                {!started && (
+                  <Button variant="primary" onPress={() => setStarted(true)}>
+                    C'est parti
+                  </Button>
+                )}
+              </div>
+              <div className="flex-1 flex justify-end">
+                {started && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+                    <Button variant="primary" isDisabled={!canContinue} onPress={handleContinue}>
+                      Continuer
+                    </Button>
+                  </motion.div>
+                )}
+              </div>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>

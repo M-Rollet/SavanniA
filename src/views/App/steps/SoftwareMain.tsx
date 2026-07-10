@@ -50,13 +50,13 @@ type Flight = {
 };
 
 function proxToDepth(p: number): number {
-  if (p < 1000) {
+  if (p < 1) {
     return 0;
   }
-  if (p < 2500) {
+  if (p < 15) {
     return 3;
   }
-  if (p < 3500) {
+  if (p < 21) {
     return 2;
   }
   return 1;
@@ -92,13 +92,19 @@ export function SoftwareMain() {
   const showTree = stepDef.features.treeVisible;
   const showManual = stepDef.features.manualOp;
   const showToggle = showTree && showManual;
+  const [manualMode, setManualMode] = useState(false);
+  const effectiveManualMode = showToggle ? manualMode : showManual;
 
   const controllableRobots = useMemo(
     () => (stepDef.features.teamSwitch ? robotConfigs.filter(r => robotTeams[r.uuid] === 'bureau') : robotConfigs),
     [stepDef.features.teamSwitch, robotConfigs, robotTeams]
   );
+  // Steps that place every robot on the tree (4/5) show an aggregate view on that tab instead of
+  // a single selected robot — there's no per-robot selector there anymore, so a robot picked
+  // earlier in "Opération manuelle" shouldn't leave the tab-pill icon colored on the tree tab.
+  const showAggregateRobots = stepDef.features.robotPlacementOnTree && !effectiveManualMode;
   const activeColor = robotConfigs.find(r => r.uuid === controledRobot)?.color;
-  const thymioIcon = (activeColor && THYMIO_ICONS[activeColor]) ?? thymioDefault;
+  const thymioIcon = !showAggregateRobots && activeColor ? THYMIO_ICONS[activeColor] : thymioDefault;
   const algorithmDatasetCount = useMemo(
     () =>
       robotConfigs.filter(
@@ -114,7 +120,6 @@ export function SoftwareMain() {
     return () => registerStopTesting(null);
   }, [registerStopTesting]);
 
-  const [manualMode, setManualMode] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
@@ -149,7 +154,8 @@ export function SoftwareMain() {
     physicalRobotDataRef.current = physicalRobotData;
   }, [physicalRobotData]);
 
-  // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau".
+  // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau", and
+  // always land on the tree tab (not wherever "Opération manuelle" was left at, e.g. from step 2).
   const prevStepIndexRef = useRef(stepIndex);
   useEffect(() => {
     if (stepIndex === 4 && prevStepIndexRef.current !== 4) {
@@ -158,9 +164,37 @@ export function SoftwareMain() {
         allBureau[r.uuid] = 'bureau';
       });
       setRobotTeams(allBureau);
+      setManualMode(false);
     }
     prevStepIndexRef.current = stepIndex;
   }, [stepIndex, setRobotTeams]);
+
+  // Records robot data with a small flying-dot animation from the tree to the corresponding
+  // data-table cell (identified by its data-cell="<uuid>-<cellSuffix>" attribute), landing before
+  // the value actually appears — falls back to applying immediately if either endpoint isn't found.
+  const treeAreaRef = useRef<HTMLDivElement>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const flyToCell = useCallback((uuid: string, cellSuffix: string, onComplete: () => void) => {
+    const originEl = treeAreaRef.current;
+    const targetEl = document.querySelector(`[data-cell="${uuid}-${cellSuffix}"]`);
+    if (originEl && targetEl) {
+      const originRect = originEl.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+      const color = ROBOT_COLORS.find(c => c.id === robotConfigsRef.current.find(r => r.uuid === uuid)?.color)?.hex;
+      setFlights(prev => [
+        ...prev,
+        {
+          id: `${uuid}-${cellSuffix}-${Date.now()}`,
+          from: { x: originRect.left + originRect.width / 2 - 6, y: originRect.top + originRect.height / 2 - 6 },
+          to: { x: targetRect.left + targetRect.width / 2 - 6, y: targetRect.top + targetRect.height / 2 - 6 },
+          color: color ?? '#3b82f6',
+          onComplete,
+        },
+      ]);
+    } else {
+      onComplete();
+    }
+  }, []);
 
   // Marks the currently-selected robot as tested once its test run reaches a tree leaf.
   const handleLeafReached = useCallback(() => {
@@ -172,13 +206,13 @@ export function SoftwareMain() {
     if (entry.tested) {
       return;
     }
-    setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...entry, tested: true } });
-  }, [setPhysicalRobotData]);
+    flyToCell(uuid, 'prediction', () => {
+      const latest = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+      setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...latest, tested: true } });
+    });
+  }, [flyToCell, setPhysicalRobotData]);
 
-  // Records the observed value for the criterion behind the currently-active question, and
-  // fires a small flying-dot animation from the tree to the corresponding data-table cell.
-  const treeAreaRef = useRef<HTMLDivElement>(null);
-  const [flights, setFlights] = useState<Flight[]>([]);
+  // Records the observed value for the criterion behind the currently-active question.
   const recordCriterionResult = useCallback(
     (value: number) => {
       const uuid = controledRobotRef.current;
@@ -186,9 +220,7 @@ export function SoftwareMain() {
       if (!uuid || !criterion) {
         return;
       }
-
-      // Apply the update to context — deferred until the flight animation lands, if one starts.
-      const applyUpdate = () => {
+      flyToCell(uuid, criterion, () => {
         const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
         setPhysicalRobotData({
           ...physicalRobotDataRef.current,
@@ -198,29 +230,9 @@ export function SoftwareMain() {
             lockedCriteria: { ...entry.lockedCriteria, [criterion]: true },
           },
         });
-      };
-
-      const originEl = treeAreaRef.current;
-      const targetEl = document.querySelector(`[data-cell="${uuid}-${criterion}"]`);
-      if (originEl && targetEl) {
-        const originRect = originEl.getBoundingClientRect();
-        const targetRect = targetEl.getBoundingClientRect();
-        const color = ROBOT_COLORS.find(c => c.id === robotConfigsRef.current.find(r => r.uuid === uuid)?.color)?.hex;
-        setFlights(prev => [
-          ...prev,
-          {
-            id: `${uuid}-${criterion}-${Date.now()}`,
-            from: { x: originRect.left + originRect.width / 2 - 6, y: originRect.top + originRect.height / 2 - 6 },
-            to: { x: targetRect.left + targetRect.width / 2 - 6, y: targetRect.top + targetRect.height / 2 - 6 },
-            color: color ?? '#3b82f6',
-            onComplete: applyUpdate,
-          },
-        ]);
-      } else {
-        applyUpdate();
-      }
+      });
     },
-    [setPhysicalRobotData]
+    [flyToCell, setPhysicalRobotData]
   );
 
   // Convert a raw seq_done value to a tree answer for the active question.
@@ -370,7 +382,6 @@ export function SoftwareMain() {
 
   const robotReady = !!controledRobot && statuses[controledRobot] === 'ready';
   const treeValid = validationErrors.length === 0;
-  const effectiveManualMode = showToggle ? manualMode : showManual;
   // Clear any pending auto-answer when testing stops.
   useEffect(() => {
     if (!testing) {
@@ -491,6 +502,11 @@ export function SoftwareMain() {
                 {stepDef.features.algorithmMode ? (
                   <span className="text-sm font-medium text-gray-600 px-1">
                     {algorithmDatasetCount} robot{algorithmDatasetCount > 1 ? 's' : ''}
+                  </span>
+                ) : showAggregateRobots ? (
+                  <span className="text-sm font-medium text-gray-600 px-1">
+                    {robotConfigs.length + externalDataset.length} robot
+                    {robotConfigs.length + externalDataset.length > 1 ? 's' : ''}
                   </span>
                 ) : (
                   <>

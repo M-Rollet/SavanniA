@@ -16,7 +16,7 @@ export type Profile = {
   expectedCategory: 'ready' | 'repair';
 };
 
-export const MIN_ROBOTS = 3;
+export const MIN_ROBOTS = 4;
 export const MAX_ROBOTS = 6; // === CORE_PROFILES.length
 
 // Priority order: success anchor + the two discoveries first, then the minimal-

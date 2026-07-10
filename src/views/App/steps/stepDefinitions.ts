@@ -220,6 +220,24 @@ export function isAlgoTreeComplete(tree: AlgoTree): boolean {
   return isAlgoTreeComplete(tree.yes) && isAlgoTreeComplete(tree.no);
 }
 
+/** Classifies a set of test results by walking a tree (manual or algorithm). */
+export function classifyWithAlgoTree(
+  tree: AlgoTree,
+  testResults: Partial<Record<Criterion, number>>
+): 'ready' | 'repair' | null {
+  if (tree.type === 'pending') {
+    return null;
+  }
+  if (tree.type === 'leaf') {
+    return tree.label;
+  }
+  const answer = answerFromTestResults(tree.questionId, testResults);
+  if (!answer) {
+    return null;
+  }
+  return classifyWithAlgoTree(answer === 'yes' ? tree.yes : tree.no, testResults);
+}
+
 export type TutorialItem = { id: string; text: string };
 
 export type StepFeatures = {

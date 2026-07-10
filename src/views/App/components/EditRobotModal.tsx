@@ -11,12 +11,17 @@ interface Props {
   entryOverride?: RobotEntry;
 }
 
-const BOOL_OPTIONS = [
-  { value: 1, label: 'Oui' },
-  { value: 0, label: 'Non' },
+export const BOOL_OPTIONS = [
+  { value: 1, label: 'OK' },
+  { value: 0, label: 'Cassé' },
 ];
 
-const BATTERY_OPTIONS = [
+export const NOISE_OPTIONS = [
+  { value: 0, label: 'Faible' },
+  { value: 1, label: 'Fort' },
+];
+
+export const BATTERY_OPTIONS = [
   { value: 0, label: 'Faible' },
   { value: 1, label: 'Moyenne' },
   { value: 2, label: 'Pleine' },
@@ -106,7 +111,7 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
 
             <Modal.Body className="flex flex-col gap-4">
               <ToggleRow
-                label="Phares"
+                label="Lumière"
                 value={entry.testResults.light_working}
                 onChange={v => setCriterion('light_working', v)}
                 options={BOOL_OPTIONS}
@@ -123,7 +128,7 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
                 label="Bruit moteur"
                 value={entry.testResults.motor_noise}
                 onChange={v => setCriterion('motor_noise', v)}
-                options={BOOL_OPTIONS}
+                options={NOISE_OPTIONS}
                 locked={!editableStep || entry.lockedCriteria.motor_noise}
               />
               <ToggleRow

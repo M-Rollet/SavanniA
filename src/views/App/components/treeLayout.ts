@@ -4,6 +4,8 @@ import { NODE_WIDTH as LEAF_WIDTH } from './LeafNode';
 
 // ── Layout constants ────────────────────────────────────────
 export const ROOT_WIDTH = 100;
+// Root node is a bit bigger when it represents multiple robots at once (steps 4-6).
+export const ROOT_WIDTH_MULTI = 124;
 export const DECISION_HEIGHT = 90;
 export const DECISION_HEIGHT_EDIT = 170; // card + 20px gap + 2 add buttons
 export const ROOT_LEVEL_GAP = 180;
@@ -20,9 +22,9 @@ export function easeInOut(t: number) {
   return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
 }
 
-export function getNodeWidth(type: string | undefined) {
+export function getNodeWidth(type: string | undefined, isMulti = false) {
   if (type === 'root') {
-    return ROOT_WIDTH;
+    return isMulti ? ROOT_WIDTH_MULTI : ROOT_WIDTH;
   }
   if (type === 'leaf') {
     return LEAF_WIDTH;
@@ -30,9 +32,9 @@ export function getNodeWidth(type: string | undefined) {
   return DECISION_WIDTH;
 }
 
-export function getNodeHeight(type: string | undefined, editing = false) {
+export function getNodeHeight(type: string | undefined, editing = false, isMulti = false) {
   if (type === 'root') {
-    return 100;
+    return isMulti ? ROOT_WIDTH_MULTI : ROOT_WIDTH;
   }
   if (type === 'leaf') {
     return 120;

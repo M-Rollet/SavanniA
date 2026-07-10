@@ -62,6 +62,9 @@ type ScenarioState = {
   /** Decision tree built step-by-step in algorithm mode (step 6). */
   algorithmTree: AlgoTree | null;
   setAlgorithmTree: (tree: AlgoTree | null) => void;
+  /** Current manually-edited tree (steps 2/4/5), mirrored here so other components (e.g. the data table) can classify robots without depending on the tree component itself. */
+  manualTree: AlgoTree | null;
+  setManualTree: (tree: AlgoTree | null) => void;
   /** How many tested+observed robots the current manual tree (step 4+) classifies correctly. */
   treeAccuracy: TreeAccuracy | null;
   setTreeAccuracy: (accuracy: TreeAccuracy | null) => void;
@@ -94,6 +97,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   );
   const [externalDataset, setExternalDataset] = useLocalStorage<ExternalRobotEntry[]>('scenario:externalDataset', []);
   const [algorithmTree, setAlgorithmTree] = useState<AlgoTree | null>(null);
+  const [manualTree, setManualTree] = useState<AlgoTree | null>(null);
   const [treeAccuracy, setTreeAccuracy] = useState<TreeAccuracy | null>(null);
   const [dataCheckFailed, setDataCheckFailed] = useState(false);
   const [observationCheckFailed, setObservationCheckFailed] = useState(false);
@@ -213,6 +217,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setPhysicalRobotData({});
     setExternalDataset([]);
     setAlgorithmTree(null);
+    setManualTree(null);
     setTreeAccuracy(null);
   }, [setStepIndex, setControledRobot, setRobotConfigs, setRobotTeams, setPhysicalRobotData, setExternalDataset]);
 
@@ -241,6 +246,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setExternalDataset,
       algorithmTree,
       setAlgorithmTree,
+      manualTree,
+      setManualTree,
       treeAccuracy,
       setTreeAccuracy,
       dataCheckFailed,
@@ -270,6 +277,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setExternalDataset,
       algorithmTree,
       setAlgorithmTree,
+      manualTree,
+      setManualTree,
       treeAccuracy,
       setTreeAccuracy,
       dataCheckFailed,

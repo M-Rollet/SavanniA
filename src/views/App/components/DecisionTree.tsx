@@ -34,6 +34,7 @@ import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import {
   answerFromTestResults,
   ALL_CRITERIA,
+  getStepDef,
   type Criterion,
   type RobotEntry,
   type AlgoTree,
@@ -540,6 +541,13 @@ function ValidateOverlay({ targets }: { targets: PendingValidation[] }) {
 // and can run robots through it.
 // ════════════════════════════════════════════════════════════════════════
 
+// Delay between the last question resolving (its own colored answer + edge) and the leaf it
+// leads to being revealed (colored result + animation, camera pan, onLeafReached). Both this
+// delay and SoftwareMain's flying-dot animation (0.8s) start from the same seq_done event and run
+// in parallel, not back-to-back — this has to clear the flight's landing time *plus* a real pause
+// after, or the leaf reveal lands right on top of the last value and the wait goes unnoticed.
+const LEAF_REACH_DELAY_MS = 1200;
+
 type ManualTreeProps = {
   testing: boolean;
   /** Whether the tree structure (nodes, questions, decisions) can be edited. Defaults to true. */
@@ -566,10 +574,16 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
   },
   ref
 ) {
-  const { controledRobot, robotConfigs, physicalRobotData, externalDataset } = useScenario();
+  const { controledRobot, robotConfigs, physicalRobotData, externalDataset, setManualTree, stepIndex } = useScenario();
+  const stepFeatures = getStepDef(stepIndex).features;
   const [nodes, setNodes] = useState<Node[]>(() => loadTree().nodes);
   const [edges, setEdges] = useState<Edge[]>(() => loadTree().edges);
   const [activeHandles, setActiveHandles] = useState<Map<string, 'yes' | 'no'>>(new Map());
+  // Set right when a question resolves into a leaf, and cleared LEAF_REACH_DELAY_MS later — while
+  // set, the leaf is held back out of the active path/frontier, so its own colored result +
+  // animation lands as a separate, later beat instead of appearing in the same instant as the
+  // question's own answer.
+  const [pendingLeafId, setPendingLeafId] = useState<string | null>(null);
   const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
   const [viewingRobot, setViewingRobot] = useState<ViewingRobot | null>(null);
   const { setCenter } = useReactFlow();
@@ -579,6 +593,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
   const activeHandlesRef = useRef<Map<string, 'yes' | 'no'>>(new Map());
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leafDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onValidationRef = useRef(onValidationChange);
   const onActiveQuestionRef = useRef(onActiveQuestionChange);
   const onLeafReachedRef = useRef(onLeafReached);
@@ -608,6 +623,11 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
   useEffect(() => {
     if (!testing) {
       setActiveHandles(new Map());
+      setPendingLeafId(null);
+      if (leafDelayTimerRef.current) {
+        clearTimeout(leafDelayTimerRef.current);
+        leafDelayTimerRef.current = null;
+      }
     }
   }, [testing]);
 
@@ -639,6 +659,13 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     setEdges
   );
 
+  // Mirror the tree as an AlgoTree in context so other components (e.g. the data table) can
+  // classify robots without depending on this component's internal node/edge representation.
+  useEffect(() => {
+    const rootEdge = edges.find(e => e.source === 'root' && e.sourceHandle === 'out');
+    setManualTree(rootEdge ? toAlgoTree(rootEdge.target, nodes, edges) : { type: 'pending' });
+  }, [nodes, edges, setManualTree]);
+
   const onPlacementClick = useCallback(
     (uuid: string) => {
       const physical = robotConfigs.find(r => r.uuid === uuid);
@@ -657,6 +684,12 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
 
   // ── Robot info ────────────────────────────────────────────
   const robotInfo = useMemo(() => {
+    // Steps that place every robot on the tree (4/5) show an aggregate count instead of a single
+    // selected robot — there's no per-robot selector on this tab for those steps anymore.
+    if (stepFeatures.robotPlacementOnTree) {
+      const count = robotConfigs.length + externalDataset.length;
+      return { color: '#a1a1a1', label: `${count} robot${count > 1 ? 's' : ''}`, colorId: '' };
+    }
     const config = robotConfigs.find(r => r.uuid === controledRobot);
     if (!config) {
       return { color: '#a1a1a1', label: 'Robot', colorId: '' };
@@ -667,7 +700,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       label: colorDef?.label ?? config.color,
       colorId: config.color,
     };
-  }, [controledRobot, robotConfigs]);
+  }, [stepFeatures.robotPlacementOnTree, controledRobot, robotConfigs, externalDataset]);
 
   // ── Robot placement: which leaf does each tested robot land on? ──
   const { leafPlacements, classificationStats } = useMemo(() => {
@@ -795,7 +828,23 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
         if (node?.type !== 'decision') {
           return;
         }
+
+        // Resolve the question node itself right away — its own answer colors in immediately.
         setActiveHandles(prev => new Map(prev).set(current, handle));
+
+        if (leafDelayTimerRef.current) {
+          clearTimeout(leafDelayTimerRef.current);
+          leafDelayTimerRef.current = null;
+        }
+        const nextEdge = edgesRef.current.find(e => e.source === current && e.sourceHandle === handle);
+        const nextNode = nextEdge && nodesRef.current.find(n => n.id === nextEdge.target);
+        if (nextNode?.type === 'leaf') {
+          setPendingLeafId(nextNode.id);
+          leafDelayTimerRef.current = setTimeout(() => {
+            leafDelayTimerRef.current = null;
+            setPendingLeafId(null);
+          }, LEAF_REACH_DELAY_MS);
+        }
       },
     }),
     [setCenter]
@@ -821,7 +870,9 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     [testing, edges, activeHandles]
   );
   useEffect(() => {
-    if (!frontierNodeId) {
+    // While the frontier is a leaf being held back (see pendingLeafId above), skip the pan and
+    // onLeafReached — both fire once the delay clears and this effect re-runs.
+    if (!frontierNodeId || frontierNodeId === pendingLeafId) {
       return;
     }
     const node = nodesRef.current.find(n => n.id === frontierNodeId);
@@ -834,10 +885,16 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     if (node.type === 'leaf') {
       onLeafReachedRef.current?.(node.id);
     }
-  }, [frontierNodeId, setCenter]);
+  }, [frontierNodeId, pendingLeafId, setCenter]);
 
-  // ── Active path ───────────────────────────────────────────
-  const activePath = useMemo(() => computeActivePath(edges, activeHandles), [edges, activeHandles]);
+  // ── Active path (excludes a leaf still being held back — see pendingLeafId) ──
+  const activePath = useMemo(() => {
+    const path = computeActivePath(edges, activeHandles);
+    if (pendingLeafId) {
+      path.delete(pendingLeafId);
+    }
+    return path;
+  }, [edges, activeHandles, pendingLeafId]);
 
   // ── Enrich edges ──────────────────────────────────────────
   const enrichedEdges = useMemo(() => {
@@ -859,6 +916,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
           const d: RootNodeData = {
             colorId: robotInfo.colorId,
             robotLabel: robotInfo.label,
+            isMulti: stepFeatures.robotPlacementOnTree,
             hasChild: edges.some(e => e.source === 'root'),
             onAddFirstChild: addFirstChild,
             testing,
@@ -868,8 +926,8 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
           return {
             ...node,
             data: d as Record<string, unknown>,
-            width: getNodeWidth('root'),
-            height: getNodeHeight('root'),
+            width: getNodeWidth('root', stepFeatures.robotPlacementOnTree),
+            height: getNodeHeight('root', false, stepFeatures.robotPlacementOnTree),
           };
         }
         if (node.type === 'decision') {
@@ -938,6 +996,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       activePath,
       highlightedNodeId,
       leafPlacements,
+      stepFeatures.robotPlacementOnTree,
     ]
   );
 
@@ -1341,6 +1400,7 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
         const d: RootNodeData = {
           colorId: '',
           robotLabel: '',
+          isMulti: true,
           hasChild: edges.some(e => e.source === 'root'),
           onAddFirstChild: addFirstChild,
           testing: false,
@@ -1350,8 +1410,8 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
         return {
           ...node,
           data: d as Record<string, unknown>,
-          width: getNodeWidth('root'),
-          height: getNodeHeight('root'),
+          width: getNodeWidth('root', true),
+          height: getNodeHeight('root', false, true),
         };
       }
       if (node.type === 'decision') {

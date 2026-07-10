@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { Plus } from '@gravity-ui/icons';
 import './TreeNodes.css';
 import thymioDefault from '../../../assets/thymio_icon.svg';
+import thymioMulti from '../../../assets/thymio_icon_multi.png';
 import thymioRed from '../../../assets/thymio_icon_red.svg';
 import thymioBlue from '../../../assets/thymio_icon_blue.svg';
 import thymioGreen from '../../../assets/thymio_icon_green.svg';
@@ -21,6 +22,8 @@ const ICONS: Record<string, string> = {
 export type RootNodeData = {
   colorId: string;
   robotLabel: string;
+  /** True for aggregate views (multiple robots at once, e.g. steps 4-6) — shows a dedicated icon. */
+  isMulti?: boolean;
   hasChild: boolean;
   onAddFirstChild: () => void;
   testing: boolean;
@@ -28,25 +31,29 @@ export type RootNodeData = {
   highlighted: boolean;
 };
 
-// Must match ROOT_WIDTH in DecisionTree.tsx
+// Must match ROOT_WIDTH / ROOT_WIDTH_MULTI in treeLayout.ts
 const NODE_SIZE = 100;
+const NODE_SIZE_MULTI = 124;
 
 export function RootNode({ data }: NodeProps) {
-  const { colorId, robotLabel, hasChild, onAddFirstChild, testing, editable, highlighted } = data as RootNodeData;
-  const icon = ICONS[colorId] ?? thymioDefault;
+  const { colorId, robotLabel, isMulti, hasChild, onAddFirstChild, testing, editable, highlighted } =
+    data as RootNodeData;
+  const icon = isMulti ? thymioMulti : ICONS[colorId] ?? thymioDefault;
+  const size = isMulti ? NODE_SIZE_MULTI : NODE_SIZE;
+  const imgSize = isMulti ? 72 : 56;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
     <div
       className="root-node"
       data-highlighted={highlighted || undefined}
-      style={{ width: NODE_SIZE, overflow: 'visible', position: 'relative' }}
+      style={{ width: size, overflow: 'visible', position: 'relative' }}
     >
       <div
         className="node-card rounded-xl bg-white shadow-sm border-2 flex flex-col items-center justify-center gap-1.5 p-2 transition-shadow"
-        style={{ width: NODE_SIZE, height: NODE_SIZE, boxSizing: 'border-box' }}
+        style={{ width: size, height: size, boxSizing: 'border-box' }}
       >
-        <img src={icon} alt={robotLabel || 'Robot'} style={{ width: 56, height: 56, objectFit: 'contain' }} />
+        <img src={icon} alt={robotLabel || 'Robot'} style={{ width: imgSize, height: imgSize, objectFit: 'contain' }} />
         {robotLabel && (
           <span className="robot-label text-xs font-semibold truncate w-full text-center">{robotLabel}</span>
         )}

@@ -41,6 +41,7 @@ var r
 var l[3]
 var prox_led[5]
 var prox_led_step[5]
+var mic_val
 var SEQ_NULL                = 0
 var SEQ_TEST_NOISE          = 1
 var SEQ_TEST_LIGHT_WORKING  = 2
@@ -378,7 +379,16 @@ onevent timer0
     end
 
 onevent prox
-    emit status[battery_value, mic.intensity, prox.horizontal[0], prox.horizontal[1], prox.horizontal[2], prox.horizontal[3], prox.horizontal[4], seq_type, led_top]
+    if motor_noise == 1 then
+        if current_speed > 10 then
+            mic_val = 127 + mic.intensity/2
+        else
+            mic_val = mic.intensity
+        end
+    else
+        mic_val = mic.intensity/2
+    end
+    emit status[battery_value, mic_val, prox_led[0], prox_led[1], prox_led[2], prox_led[3], prox_led[4], seq_type, led_top]
     if ir_working == 1 and seq_type != SEQ_TEST_IR then
         for i in 0:4 do
             prox_led[i] = prox.horizontal[i] / 156
