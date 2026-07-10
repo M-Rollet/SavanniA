@@ -4,19 +4,21 @@ import { EventDescription } from '@mobsya-association/thymio-api';
 // robot → app: ready, seq_done
 // app → robot: light_off, light_on, test_battery, test_ir, test_light, test_sound
 export const eventsDefinition: EventDescription[] = [
-  { name: 'ready',        fixed_size: 0, index: 0 },
-  { name: 'seq_done',     fixed_size: 1, index: 1 },
-  { name: 'light_off',    fixed_size: 0, index: 2 },
-  { name: 'light_on',     fixed_size: 0, index: 3 },
+  { name: 'ready', fixed_size: 0, index: 0 },
+  { name: 'seq_done', fixed_size: 1, index: 1 },
+  { name: 'light_off', fixed_size: 0, index: 2 },
+  { name: 'light_on', fixed_size: 0, index: 3 },
   { name: 'test_battery', fixed_size: 0, index: 4 },
-  { name: 'test_ir',      fixed_size: 0, index: 5 },
-  { name: 'test_light',   fixed_size: 0, index: 6 },
-  { name: 'test_sound',   fixed_size: 0, index: 7 },
-  { name: 'set_battery',  fixed_size: 0, index: 8 },
-  { name: 'go_forward',   fixed_size: 0, index: 9 },
-  { name: 'go_backward',  fixed_size: 0, index: 10 },
-  { name: 'status',       fixed_size: 9, index: 11 },
-  { name: 'identify',     fixed_size: 0, index: 12 },
+  { name: 'test_ir', fixed_size: 0, index: 5 },
+  { name: 'test_light', fixed_size: 0, index: 6 },
+  { name: 'test_sound', fixed_size: 0, index: 7 },
+  { name: 'set_battery', fixed_size: 0, index: 8 },
+  { name: 'go_forward', fixed_size: 0, index: 9 },
+  { name: 'go_backward', fixed_size: 0, index: 10 },
+  { name: 'status', fixed_size: 10, index: 11 },
+  { name: 'identify', fixed_size: 0, index: 12 },
+  { name: 'set_mode_on', fixed_size: 0, index: 13 },
+  { name: 'set_mode_off', fixed_size: 0, index: 14 },
 ];
 
 export const asebaScript = `
@@ -96,16 +98,25 @@ emit ready
 
 onevent button.center
     if field_mode == 1 then
-        call leds.buttons(32, 32, 32, 32)
-        if button.center == 0 then
-            call leds.buttons(0, 0, 0, 0)
+        if button.center == 1 then
+            call leds.buttons(32, 32, 32, 32)
             if field_step == 0 then
                 field_step = 1
             else
                 field_step = 0
+                motor.left.target = 0
+                motor.right.target = 0
             end
+        else
+            call leds.buttons(0, 0, 0, 0)
         end
     end
+
+onevent set_mode_on
+    field_mode = 1
+
+onevent set_mode_off
+    field_mode = 0
 
 onevent motor
     if motor_noise == 1 then
@@ -388,7 +399,7 @@ onevent prox
     else
         mic_val = mic.intensity/2
     end
-    emit status[battery_value, mic_val, prox_led[0], prox_led[1], prox_led[2], prox_led[3], prox_led[4], seq_type, led_top]
+    emit status[battery_value, mic_val, prox_led[0], prox_led[1], prox_led[2], prox_led[3], prox_led[4], seq_type, led_top, field_mode]
     if ir_working == 1 and seq_type != SEQ_TEST_IR then
         for i in 0:4 do
             prox_led[i] = prox.horizontal[i] / 156

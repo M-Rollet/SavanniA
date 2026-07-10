@@ -135,6 +135,8 @@ export function SoftwareMain() {
   const activeQuestionRef = useRef<string | null>(null);
   const robotConfigsRef = useRef(robotConfigs);
   const physicalRobotDataRef = useRef(physicalRobotData);
+  const statusesRef = useRef(statuses);
+  const fieldTestRef = useRef(stepDef.features.fieldTest);
   useLayoutEffect(() => {
     testingRef.current = testing;
   }, [testing]);
@@ -153,6 +155,12 @@ export function SoftwareMain() {
   useLayoutEffect(() => {
     physicalRobotDataRef.current = physicalRobotData;
   }, [physicalRobotData]);
+  useLayoutEffect(() => {
+    statusesRef.current = statuses;
+  }, [statuses]);
+  useLayoutEffect(() => {
+    fieldTestRef.current = stepDef.features.fieldTest;
+  }, [stepDef.features.fieldTest]);
 
   // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau", and
   // always land on the tree tab (not wherever "Opération manuelle" was left at, e.g. from step 2).
@@ -168,6 +176,26 @@ export function SoftwareMain() {
     }
     prevStepIndexRef.current = stepIndex;
   }, [stepIndex, setRobotTeams]);
+
+  // Field-test steps (3 & 7): put every ready robot in field mode (enables the center-button
+  // line-follow test) on entry, and take them back out of it again on exit.
+  const prevFieldTestRef = useRef(false);
+  useEffect(() => {
+    const isFieldTest = stepDef.features.fieldTest;
+    if (isFieldTest === prevFieldTestRef.current) {
+      return;
+    }
+    prevFieldTestRef.current = isFieldTest;
+    const event = isFieldTest ? 'set_mode_on' : 'set_mode_off';
+    robotConfigsRef.current.forEach(({ uuid }) => {
+      if (statusesRef.current[uuid] !== 'ready') {
+        return;
+      }
+      user.emitEvent(uuid, event).catch((err: unknown) => {
+        console.warn(`[SoftwareMain] ${event} failed for ${uuid}:`, err);
+      });
+    });
+  }, [stepDef.features.fieldTest, user]);
 
   // Records robot data with a small flying-dot animation from the tree to the corresponding
   // data-table cell (identified by its data-cell="<uuid>-<cellSuffix>" attribute), landing before
@@ -312,6 +340,12 @@ export function SoftwareMain() {
           console.log('[SoftwareMain] emitting set_battery, cfg:', cfg, 'uuid:', uuid);
           if (cfg) {
             user.emitEvent(uuid, 'set_battery');
+          }
+          // Robot connected mid-field-test (e.g. reconnect): put it straight into field mode.
+          if (fieldTestRef.current) {
+            user.emitEvent(uuid, 'set_mode_on').catch((err: unknown) => {
+              console.warn('[SoftwareMain] set_mode_on on connect failed for', uuid, err);
+            });
           }
         })
         .catch((err: unknown) => {

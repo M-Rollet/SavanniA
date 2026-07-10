@@ -261,6 +261,8 @@ export type StepFeatures = {
   algorithmMode: boolean;
   /** Robots can be placed/tested directly against tree nodes. */
   robotPlacementOnTree: boolean;
+  /** A physical field test is in progress — robots should be put in field mode (steps 3 & 7). */
+  fieldTest: boolean;
 };
 
 export type TreeAccuracy = { total: number; correct: number };
@@ -292,6 +294,7 @@ const NO_FEATURES: StepFeatures = {
   externalData: false,
   algorithmMode: false,
   robotPlacementOnTree: false,
+  fieldTest: false,
 };
 
 export const STEP_DEFS: StepDef[] = [
@@ -329,7 +332,7 @@ export const STEP_DEFS: StepDef[] = [
     index: 3,
     label: 'Tests sur le terrain',
     shortLabel: 'Terrain',
-    features: { ...NO_FEATURES, observationEntry: true },
+    features: { ...NO_FEATURES, observationEntry: true, fieldTest: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.observation != null),
     tutorial: [{ id: 'terrain-intro', text: 'Direction le terrain : observe chaque robot en conditions réelles.' }],
@@ -391,7 +394,7 @@ export const STEP_DEFS: StepDef[] = [
     index: 7,
     label: 'Test final',
     shortLabel: 'Final',
-    features: { ...NO_FEATURES },
+    features: { ...NO_FEATURES, fieldTest: true },
     canAdvance: () => false,
     tutorial: [{ id: 'final-intro', text: 'Vérifie que ton IA choisit les bons robots pour la mission.' }],
   },

@@ -63,10 +63,7 @@ export class ClientDeviceManager implements TdmClient {
   };
 
   /** Locks and initialises the robot, then subscribes to its robot events (e.g. seq_done). */
-  takeControl = async (
-    uuid: string,
-    onEvent: (uuid: string, events: { [name: string]: number }) => void
-  ) => {
+  takeControl = async (uuid: string, onEvent: (uuid: string, events: { [name: string]: number }) => void) => {
     const thymio = this.nodeList.state[uuid];
     if (thymio) {
       // Register the callback before initializing so seq_done events are forwarded

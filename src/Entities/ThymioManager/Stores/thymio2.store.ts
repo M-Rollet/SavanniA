@@ -8,28 +8,30 @@ const RETRY_TIMEOUT_MS = 300;
 const MAX_RETRIES = 3;
 
 // Mirror of the AESL SEQ_* constants (initialised at robot startup).
-const SEQ_NULL               = 0;
-const SEQ_TEST_NOISE         = 1;
+const SEQ_NULL = 0;
+const SEQ_TEST_NOISE = 1;
 const SEQ_TEST_LIGHT_WORKING = 2;
 const SEQ_TEST_LIGHT_FAILING = 3;
-const SEQ_TEST_IR            = 4;
-const SEQ_TEST_BATTERY       = 5;
-const SEQ_MOVE               = 7;
+const SEQ_TEST_IR = 4;
+const SEQ_TEST_BATTERY = 5;
+const SEQ_MOVE = 7;
 
-type StatusSnapshot = { light: number; seqType: number };
+type StatusSnapshot = { light: number; seqType: number; fieldMode: number };
 
 // Maps each event name to a predicate that, once true in the status stream,
 // confirms the robot processed the command. Events without an entry are sent
 // fire-and-forget (no retry).
 const EVENT_CONFIRMATIONS: Partial<Record<string, (s: StatusSnapshot) => boolean>> = {
-  light_on:     s => s.light > 0,
-  light_off:    s => s.light === 0,
-  go_forward:   s => s.seqType === SEQ_MOVE,
-  go_backward:  s => s.seqType === SEQ_MOVE,
-  test_sound:   s => s.seqType === SEQ_TEST_NOISE,
-  test_light:   s => s.seqType === SEQ_TEST_LIGHT_WORKING || s.seqType === SEQ_TEST_LIGHT_FAILING,
-  test_ir:      s => s.seqType === SEQ_TEST_IR,
+  light_on: s => s.light > 0,
+  light_off: s => s.light === 0,
+  go_forward: s => s.seqType === SEQ_MOVE,
+  go_backward: s => s.seqType === SEQ_MOVE,
+  test_sound: s => s.seqType === SEQ_TEST_NOISE,
+  test_light: s => s.seqType === SEQ_TEST_LIGHT_WORKING || s.seqType === SEQ_TEST_LIGHT_FAILING,
+  test_ir: s => s.seqType === SEQ_TEST_IR,
   test_battery: s => s.seqType === SEQ_TEST_BATTERY,
+  set_mode_on: s => s.fieldMode === 1,
+  set_mode_off: s => s.fieldMode === 0,
 };
 
 @Store({ key: 'Thymio Store', predicate: ['thymio2', 'eventVariable'] })
@@ -50,8 +52,9 @@ export class Thymio2EventVariable implements Thymio {
   eventCallback: (vars: { [name: string]: number }) => void = () => {};
 
   private readyResolver: (() => void) | null = null;
-  private StatusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL };
-  private pendingAck: { predicate: (s: StatusSnapshot) => boolean; resolve: (confirmed: boolean) => void } | null = null;
+  private StatusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL, fieldMode: 0 };
+  private pendingAck: { predicate: (s: StatusSnapshot) => boolean; resolve: (confirmed: boolean) => void } | null =
+    null;
 
   constructor({ uuid, node }: { uuid: string; node: INode }) {
     this.uuid = uuid;
@@ -106,7 +109,9 @@ export class Thymio2EventVariable implements Thymio {
    * MAX_RETRIES times before throwing. Events without a predicate are fire-and-forget.
    */
   emitEvent = async (eventName: string): Promise<void> => {
-    if (!this.node) return;
+    if (!this.node) {
+      return;
+    }
 
     const predicate = EVENT_CONFIRMATIONS[eventName];
 
@@ -132,7 +137,9 @@ export class Thymio2EventVariable implements Thymio {
       });
       this.pendingAck = null;
 
-      if (confirmed) return;
+      if (confirmed) {
+        return;
+      }
       if (attempt < MAX_RETRIES) {
         console.warn(`[Thymio] ${eventName}: no confirmation, retry ${attempt + 1}/${MAX_RETRIES}`);
       }
@@ -241,25 +248,25 @@ export class Thymio2EventVariable implements Thymio {
           break;
         case 'status': {
           const arr = (value as number[]) ?? [];
-          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: arr[7] ?? 0 };
+          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: arr[7] ?? 0, fieldMode: arr[9] ?? 0 };
           if (this.pendingAck?.predicate(this.StatusSnapshot)) {
             this.pendingAck.resolve(true);
           }
           this.eventCallback({
-            status_battery:  arr[0] ?? 0,
-            status_mic:      arr[1] ?? 0,
-            status_prox_0:   arr[2] ?? 0,
-            status_prox_1:   arr[3] ?? 0,
-            status_prox_2:   arr[4] ?? 0,
-            status_prox_3:   arr[5] ?? 0,
-            status_prox_4:   arr[6] ?? 0,
+            status_battery: arr[0] ?? 0,
+            status_mic: arr[1] ?? 0,
+            status_prox_0: arr[2] ?? 0,
+            status_prox_1: arr[3] ?? 0,
+            status_prox_2: arr[4] ?? 0,
+            status_prox_3: arr[5] ?? 0,
+            status_prox_4: arr[6] ?? 0,
             status_seq_type: arr[7] ?? 0,
-            status_light:    arr[8] ?? 0,
+            status_light: arr[8] ?? 0,
+            status_field_mode: arr[9] ?? 0,
           });
           break;
         }
       }
     });
   };
-
 }
