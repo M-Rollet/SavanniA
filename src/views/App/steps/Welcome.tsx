@@ -83,20 +83,13 @@ export function Welcome() {
               <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 flex flex-col gap-6">
                 <h3 className="text-xl font-semibold">Votre mission</h3>
                 <p className="text-gray-600">
-                  Integer ac rhoncus purus. Suspendisse at augue arcu. Donec dignissim fringilla suscipit. Ut ligula
-                  massa, volutpat ut nisl a, faucibus luctus felis. Ut non hendrerit nisl. Etiam tempus nunc et odio
-                  consectetur interdum. Aenean lacinia tellus laoreet sapien aliquet pharetra.
+                  Bienvenue dans la laboratoire de SavannIA. Vous travaillez comme scientifique dans la savanne et devez envoyer des robots en mission d'exploration, pour parcourir le terrain et repérer les environs. Mais attention, certains robots sont défectueux et n'arriveront pas à accomplir la mission !
                 </p>
                 <p className="text-gray-600">
-                  Suspendisse sit amet orci ut nisl lacinia elementum. Phasellus lectus nunc, condimentum eget nisi eu,
-                  gravida sollicitudin neque. Integer tellus tellus, aliquam at semper ut, dictum et sem.
+                  L'équipe de scientifiques n'a pas le temps de tester et inspecter tous les robots avant chaque mission et il est hors de question de laisser des robots défectueux dans la nature. Votre objectif est donc de créer une intelligence artificielle capable de trier les robots avant leur départ et d'envoyer en réparation ceux qui en ont besoin.
                 </p>
                 <p className="text-gray-600">
-                  Proin sapien lectus, ultricies ut sodales et, ultrices ut nisi. In pharetra pellentesque lacus, a
-                  luctus odio dignissim at. Phasellus eleifend tortor a dolor vehicula, a auctor nulla sagittis. Donec
-                  mollis elementum nisi, sed interdum velit venenatis at. Suspendisse eu bibendum orci. Pellentesque
-                  finibus quam ut lacus accumsan placerat. Pellentesque est dolor, accumsan id molestie eu, venenatis et
-                  felis. Maecenas malesuada purus ac ullamcorper porttitor. In eget ultrices neque.
+                  Vous allez découvrir les robots, observer leur comportement sur le terrain et contruire une IA capable de les trier...
                 </p>
                 <div className="flex justify-end">
                   <Button variant="primary" onClick={() => goToStep(1)}>

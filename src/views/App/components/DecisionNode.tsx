@@ -19,6 +19,8 @@ export type DecisionNodeData = {
   editable: boolean;
   activeHandle: 'yes' | 'no' | null;
   isOnActivePath: boolean;
+  /** Optional prominent total-error-count badge (algorithm mode only). */
+  errorBadge?: number;
 };
 
 export const NODE_WIDTH = 310;
@@ -39,6 +41,7 @@ export function DecisionNode({ id, data }: NodeProps) {
     editable,
     activeHandle,
     isOnActivePath,
+    errorBadge,
   } = data as DecisionNodeData;
 
   const usedElsewhere = new Set([...ancestorQuestionIds, ...descendantQuestionIds]);
@@ -58,6 +61,16 @@ export function DecisionNode({ id, data }: NodeProps) {
       style={{ width: NODE_WIDTH, overflow: 'visible', position: 'relative' }}
     >
       <Handle type="target" position={Position.Top} />
+
+      {errorBadge !== undefined && (
+        <div
+          className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-xs font-bold shadow-sm z-20 whitespace-nowrap ${
+            errorBadge === 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+          }`}
+        >
+          {errorBadge} erreur{errorBadge > 1 ? 's' : ''}
+        </div>
+      )}
 
       {canEdit && (
         <button

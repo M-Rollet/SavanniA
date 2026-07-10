@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 export function useLocalStorage<T>(key: string, defaultValue: T) {
   const [value, setValue] = useState<T>(() => {
@@ -10,14 +10,17 @@ export function useLocalStorage<T>(key: string, defaultValue: T) {
     }
   });
 
-  const setValueAndStore = (next: T) => {
-    setValue(next);
-    try {
-      localStorage.setItem(key, JSON.stringify(next));
-    } catch {
-      // storage full or private mode
-    }
-  };
+  const setValueAndStore = useCallback(
+    (next: T) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch {
+        // storage full or private mode
+      }
+    },
+    [key]
+  );
 
   return [value, setValueAndStore] as const;
 }

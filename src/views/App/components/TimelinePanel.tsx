@@ -1,14 +1,28 @@
 import { Button } from '@heroui/react';
 import { ArrowRight, Check } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
-import { STEP_DEFS, getStepDef } from '../steps/stepDefinitions';
+import { STEP_DEFS, getStepDef, hasAllCriteria } from '../steps/stepDefinitions';
+import { hasWrongCriteria } from '../robotProfiles';
 
 export function TimelinePanel() {
-  const { stepIndex, advanceStep, physicalRobotData, robotConfigs } = useScenario();
+  const { stepIndex, advanceStep, physicalRobotData, robotConfigs, algorithmTree, treeAccuracy, setDataCheckFailed } =
+    useScenario();
   const current = getStepDef(stepIndex);
-  const canAdvance = current.canAdvance({ physicalRobotData, robotConfigs });
+  const canAdvance = current.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy });
   const isLastStep = stepIndex >= STEP_DEFS.length;
-  const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested).length;
+  const filledCount = robotConfigs.filter(r => hasAllCriteria(physicalRobotData[r.uuid])).length;
+  const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested === true).length;
+
+  // Step 2's completeness gate (canAdvance) doesn't check correctness — do that here, right
+  // before actually moving on, so a full-but-wrong table blocks advancement with an explanation
+  // instead of silently letting the user through.
+  const handleAdvance = () => {
+    if (stepIndex === 2 && hasWrongCriteria(robotConfigs, physicalRobotData)) {
+      setDataCheckFailed(true);
+      return;
+    }
+    advanceStep();
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -46,8 +60,18 @@ export function TimelinePanel() {
           <p key={item.id} className="text-sm text-gray-600">
             {item.text}
             {stepIndex === 2 && item.id === 'discovery-intro' && robotConfigs.length > 0 && (
+              <>
+                <span className="block mt-1 text-xs font-semibold text-gray-800">
+                  {testedCount}/{robotConfigs.length} robots testés
+                </span>
+                <span className="block text-xs font-semibold text-gray-800">
+                  {filledCount}/{robotConfigs.length} robots avec données complètes
+                </span>
+              </>
+            )}
+            {stepIndex === 4 && item.id === 'refine-intro' && treeAccuracy && treeAccuracy.total > 0 && (
               <span className="block mt-1 text-xs font-semibold text-gray-800">
-                {testedCount}/{robotConfigs.length} robots testés
+                {treeAccuracy.correct}/{treeAccuracy.total} robots correctement classés
               </span>
             )}
           </p>
@@ -55,7 +79,7 @@ export function TimelinePanel() {
       </div>
 
       {!isLastStep && (
-        <Button variant="primary" size="sm" isDisabled={!canAdvance} onPress={advanceStep} className="self-start">
+        <Button variant="primary" size="sm" isDisabled={!canAdvance} onPress={handleAdvance} className="self-start">
           Étape suivante
           <ArrowRight />
         </Button>

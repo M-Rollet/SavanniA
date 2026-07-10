@@ -10,7 +10,9 @@ import {
 } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   useReactFlow,
+  useViewport,
   applyNodeChanges,
   Controls,
   type Node,
@@ -22,15 +24,49 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { RootNode, type RootNodeData } from './RootNode';
-import { DecisionNode, type DecisionNodeData, NODE_WIDTH as DECISION_WIDTH } from './DecisionNode';
-import { LeafNode, type LeafNodeData, NODE_WIDTH as LEAF_WIDTH } from './LeafNode';
+import { DecisionNode, type DecisionNodeData } from './DecisionNode';
+import { LeafNode, type LeafNodeData, type RobotPlacement } from './LeafNode';
+import { ValidateCard, VALIDATE_WIDTH } from './ValidateCard';
+import { AlgorithmValidateModal, type AlgorithmValidateModalStatus } from './AlgorithmValidateModal';
+import { EditRobotModal } from './EditRobotModal';
+import { QUESTIONS } from './questions';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
+import {
+  answerFromTestResults,
+  ALL_CRITERIA,
+  type Criterion,
+  type RobotEntry,
+  type AlgoTree,
+} from '../steps/stepDefinitions';
+import {
+  layoutTree,
+  getNodeWidth,
+  getNodeHeight,
+  getAncestorQuestionIds,
+  getDescendantQuestionIds,
+  getAncestorDecisionCount,
+  getDescendants,
+  ANIM_DURATION,
+  PAN_DURATION,
+  PAN_BUFFER,
+  FOCUS_ZOOM,
+  easeInOut,
+} from './treeLayout';
 
 export type ValidationError = { nodeId: string; message: string };
 export type DecisionTreeHandle = {
   focusAndHighlight: (nodeId: string) => void;
   answerFrontier: (handle: 'yes' | 'no') => void;
 };
+
+const NODE_TYPES: NodeTypes = { root: RootNode, decision: DecisionNode, leaf: LeafNode };
+
+/** Robot currently shown in the read-only detail modal opened from a tree leaf's placement dots. */
+type ViewingRobot = { uuid: string; label: string; entryOverride?: RobotEntry };
+
+// ════════════════════════════════════════════════════════════════════════
+// Shared pure helpers
+// ════════════════════════════════════════════════════════════════════════
 
 function validateTree(nodes: Node[], edges: Edge[]): ValidationError[] {
   if (!edges.some(e => e.source === 'root')) {
@@ -56,120 +92,6 @@ function validateTree(nodes: Node[], edges: Edge[]): ValidationError[] {
   return errors;
 }
 
-// ── Layout constants ────────────────────────────────────────
-const ROOT_WIDTH = 100;
-const DECISION_HEIGHT = 90;
-const DECISION_HEIGHT_EDIT = 170; // card + 20px gap + 2 add buttons
-const ROOT_LEVEL_GAP = 180;
-const LEVEL_HEIGHT = 200;
-const X_GAP = 330;
-
-// ── Viewport animation constants ────────────────────────────
-const ANIM_DURATION = 300;
-const PAN_DURATION = 280;
-const PAN_BUFFER = 20;
-const FOCUS_ZOOM = 1.0;
-
-function easeInOut(t: number) {
-  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-}
-
-function getNodeWidth(type: string | undefined) {
-  if (type === 'root') {
-    return ROOT_WIDTH;
-  }
-  if (type === 'leaf') {
-    return LEAF_WIDTH;
-  }
-  return DECISION_WIDTH;
-}
-
-function getNodeHeight(type: string | undefined, editing = false) {
-  if (type === 'root') {
-    return 100;
-  }
-  if (type === 'leaf') {
-    return 120;
-  }
-  return editing ? DECISION_HEIGHT_EDIT : DECISION_HEIGHT;
-}
-
-// ── Layout algorithm ────────────────────────────────────────
-function layoutTree(nodes: Node[], edges: Edge[]): Node[] {
-  const childrenByParent = new Map<string, { childId: string; handle: string }[]>();
-  for (const edge of edges) {
-    if (!childrenByParent.has(edge.source)) {
-      childrenByParent.set(edge.source, []);
-    }
-    childrenByParent.get(edge.source)!.push({ childId: edge.target, handle: edge.sourceHandle ?? '' });
-  }
-
-  const widthCache = new Map<string, number>();
-  function getSubtreeWidth(nodeId: string): number {
-    if (widthCache.has(nodeId)) {
-      return widthCache.get(nodeId)!;
-    }
-    const node = nodes.find(n => n.id === nodeId);
-    const children = childrenByParent.get(nodeId) ?? [];
-    if (nodeId === 'root') {
-      const child = children.find(c => c.handle === 'out');
-      const w = child ? getSubtreeWidth(child.childId) : X_GAP;
-      widthCache.set(nodeId, w);
-      return w;
-    }
-    if (node?.type === 'leaf' || children.length === 0) {
-      widthCache.set(nodeId, X_GAP);
-      return X_GAP;
-    }
-    const yesChild = children.find(c => c.handle === 'yes');
-    const noChild = children.find(c => c.handle === 'no');
-    const w =
-      (yesChild ? getSubtreeWidth(yesChild.childId) : X_GAP) + (noChild ? getSubtreeWidth(noChild.childId) : X_GAP);
-    widthCache.set(nodeId, w);
-    return w;
-  }
-
-  const positions = new Map<string, { x: number; y: number }>();
-  function visit(nodeId: string, centerX: number, y: number) {
-    positions.set(nodeId, { x: centerX, y });
-    const children = childrenByParent.get(nodeId) ?? [];
-    if (nodeId === 'root') {
-      const child = children.find(c => c.handle === 'out');
-      if (child) {
-        visit(child.childId, centerX, y + ROOT_LEVEL_GAP);
-      }
-      return;
-    }
-    const yesChild = children.find(c => c.handle === 'yes');
-    const noChild = children.find(c => c.handle === 'no');
-    const yesW = yesChild ? getSubtreeWidth(yesChild.childId) : X_GAP;
-    const noW = noChild ? getSubtreeWidth(noChild.childId) : X_GAP;
-    const left = centerX - (yesW + noW) / 2;
-    if (yesChild) {
-      visit(yesChild.childId, left + yesW / 2, y + LEVEL_HEIGHT);
-    }
-    if (noChild) {
-      visit(noChild.childId, left + yesW + noW / 2, y + LEVEL_HEIGHT);
-    }
-  }
-  visit('root', 0, 0);
-
-  return nodes.map(node => {
-    const pos = positions.get(node.id);
-    if (!pos) {
-      return node;
-    }
-    return {
-      ...node,
-      position: {
-        x: Math.round(pos.x - getNodeWidth(node.type) / 2),
-        y: Math.round(pos.y),
-      },
-    };
-  });
-}
-
-// ── Tree helpers ────────────────────────────────────────────
 function computeActivePath(edges: Edge[], activeHandles: Map<string, 'yes' | 'no'>): Set<string> {
   const onPath = new Set<string>(['root']);
   let current = 'root';
@@ -186,50 +108,6 @@ function computeActivePath(edges: Edge[], activeHandles: Map<string, 'yes' | 'no
     current = edge.target;
   }
   return onPath;
-}
-
-function getAncestorQuestionIds(nodeId: string, nodes: Node[], edges: Edge[]): string[] {
-  const ids: string[] = [];
-  let current = nodeId;
-  while (true) {
-    const parentEdge = edges.find(e => e.target === current);
-    if (!parentEdge) {
-      break;
-    }
-    current = parentEdge.source;
-    if (current === 'root') {
-      break;
-    }
-    const qId = nodes.find(n => n.id === current)?.data?.questionId as string | undefined;
-    if (qId) {
-      ids.push(qId);
-    }
-  }
-  return ids;
-}
-
-function getDescendantQuestionIds(nodeId: string, nodes: Node[], edges: Edge[]): string[] {
-  const descendants = getDescendants(nodeId, edges);
-  return nodes
-    .filter(n => descendants.has(n.id) && n.type === 'decision' && n.data.questionId)
-    .map(n => n.data.questionId as string);
-}
-
-function getAncestorDecisionCount(nodeId: string, edges: Edge[]): number {
-  let count = 0;
-  let current = nodeId;
-  while (true) {
-    const parentEdge = edges.find(e => e.target === current);
-    if (!parentEdge) {
-      break;
-    }
-    current = parentEdge.source;
-    if (current === 'root') {
-      break;
-    }
-    count++;
-  }
-  return count;
 }
 
 /** Returns the nodeId of the last reachable node on the active path (decision or leaf), or null. */
@@ -266,20 +144,143 @@ function getActiveFrontierQuestion(
   return (node.data.questionId as string | null) ?? null;
 }
 
-function getDescendants(parentId: string, edges: Edge[]): Set<string> {
-  const out = new Set<string>();
-  const queue = [parentId];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    for (const e of edges) {
-      if (e.source === cur) {
-        out.add(e.target);
-        queue.push(e.target);
-      }
-    }
+/** Walks the tree from the root using recorded test results; returns the leaf node reached, or null if stuck. */
+function walkToLeaf(testResults: Partial<Record<Criterion, number>>, nodes: Node[], edges: Edge[]): Node | null {
+  const rootEdge = edges.find(e => e.source === 'root' && e.sourceHandle === 'out');
+  if (!rootEdge) {
+    return null;
   }
-  return out;
+  let current = rootEdge.target;
+  let node = nodes.find(n => n.id === current);
+  while (node?.type === 'decision') {
+    const questionId = node.data.questionId as string | null;
+    const answer = questionId ? answerFromTestResults(questionId, testResults) : null;
+    if (!answer) {
+      return null; // stuck: this criterion hasn't been tested
+    }
+    const edge = edges.find(e => e.source === current && e.sourceHandle === answer);
+    if (!edge) {
+      return null; // dead end: this branch isn't built yet
+    }
+    current = edge.target;
+    node = nodes.find(n => n.id === current);
+  }
+  return node?.type === 'leaf' ? node : null;
 }
+
+// ── Algorithm mode: dataset & error-count helpers ──────────────────────
+type DatasetEntry = {
+  id: string;
+  label: string;
+  color: string;
+  category: 'ready' | 'repair';
+  testResults: Partial<Record<Criterion, number>>;
+};
+
+/**
+ * Forces the two branches of a question to opposite categories and picks whichever of the two
+ * possible opposite-assignments (yes=ready/no=repair vs. yes=repair/no=ready) yields fewer errors.
+ */
+function resolveBranchCategories(
+  yesEntries: DatasetEntry[],
+  noEntries: DatasetEntry[]
+): { yesReady: boolean; noReady: boolean; errorCount: number } {
+  const readyCount = (list: DatasetEntry[]) => list.filter(e => e.category === 'ready').length;
+  const yesReadyCount = readyCount(yesEntries);
+  const yesRepairCount = yesEntries.length - yesReadyCount;
+  const noReadyCount = readyCount(noEntries);
+  const noRepairCount = noEntries.length - noReadyCount;
+
+  const errorsA = yesRepairCount + noReadyCount; // yes=ready, no=repair
+  const errorsB = yesReadyCount + noRepairCount; // yes=repair, no=ready
+
+  if (errorsA <= errorsB) {
+    return { yesReady: true, noReady: false, errorCount: errorsA };
+  }
+  return { yesReady: false, noReady: true, errorCount: errorsB };
+}
+
+function errorCountForQuestion(entries: DatasetEntry[], questionId: string): number {
+  const yes = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'yes');
+  const no = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'no');
+  return resolveBranchCategories(yes, no).errorCount;
+}
+
+function majorityCategory(entries: DatasetEntry[]): boolean {
+  if (entries.length === 0) {
+    return true;
+  }
+  const ready = entries.filter(e => e.category === 'ready').length;
+  return ready * 2 >= entries.length;
+}
+
+function isPureSet(entries: DatasetEntry[]): boolean {
+  if (entries.length === 0) {
+    return true;
+  }
+  return entries.every(e => e.category === entries[0].category);
+}
+
+/** Walks from the root down to nodeId, filtering the dataset by every question/answer along the way. */
+function computeEntriesForNode(nodeId: string, nodes: Node[], edges: Edge[], dataset: DatasetEntry[]): DatasetEntry[] {
+  const parentOf = new Map<string, { parentId: string; handle: string }>();
+  for (const e of edges) {
+    parentOf.set(e.target, { parentId: e.source, handle: e.sourceHandle ?? '' });
+  }
+  const path: { nodeId: string; handle: string }[] = [];
+  let cur = nodeId;
+  while (cur !== 'root') {
+    const p = parentOf.get(cur);
+    if (!p) {
+      return [];
+    }
+    path.unshift({ nodeId: p.parentId, handle: p.handle });
+    cur = p.parentId;
+  }
+  let entries = dataset;
+  for (const step of path) {
+    if (step.nodeId === 'root') {
+      continue;
+    }
+    const node = nodes.find(n => n.id === step.nodeId);
+    const questionId = node?.data.questionId as string | null | undefined;
+    if (!questionId) {
+      break;
+    }
+    entries = entries.filter(e => answerFromTestResults(questionId, e.testResults) === step.handle);
+  }
+  return entries;
+}
+
+function toAlgoTree(nodeId: string, nodes: Node[], edges: Edge[]): AlgoTree {
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) {
+    return { type: 'pending' };
+  }
+  if (node.type === 'leaf') {
+    const d = node.data.decision as boolean | null;
+    return { type: 'leaf', label: d === null || d === undefined ? null : d ? 'ready' : 'repair' };
+  }
+  if (node.type === 'decision') {
+    const questionId = node.data.questionId as string | null;
+    if (!questionId) {
+      return { type: 'pending' };
+    }
+    const yesEdge = edges.find(e => e.source === nodeId && e.sourceHandle === 'yes');
+    const noEdge = edges.find(e => e.source === nodeId && e.sourceHandle === 'no');
+    return {
+      type: 'question',
+      questionId,
+      yes: yesEdge ? toAlgoTree(yesEdge.target, nodes, edges) : { type: 'pending' },
+      no: noEdge ? toAlgoTree(noEdge.target, nodes, edges) : { type: 'pending' },
+    };
+  }
+  return { type: 'pending' };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Manual mode persistence (steps 2 / 4 / 5)
+// ════════════════════════════════════════════════════════════════════════
 
 const STORAGE_KEY = 'savannia-decision-tree';
 
@@ -287,7 +288,6 @@ export function clearSavedTree() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-// ── Initial tree ─────────────────────────────────────────────
 // Shown on first access (no saved tree in localStorage).
 // Edit nodes/edges below to change the pre-built starting tree.
 // Use fixed string IDs (not random UUIDs) so the structure is predictable.
@@ -305,10 +305,10 @@ const INITIAL_TREE: { nodes: Node[]; edges: Edge[] } = (() => {
   const nodes: Node[] = [
     { id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} },
     { id: 'd1', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'battery_low' } },
-    { id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
+    { id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'motor_noise' } },
     { id: 'l1', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
-    { id: 'l2', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
-    { id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'l2', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
   ];
   return { nodes: layoutTree(nodes, edges), edges };
 })();
@@ -329,85 +329,25 @@ function loadTree(): { nodes: Node[]; edges: Edge[] } {
   return INITIAL_TREE;
 }
 
-// ── Component ───────────────────────────────────────────────
-type DecisionTreeProps = {
-  testing: boolean;
-  /** Whether the tree structure (nodes, questions, decisions) can be edited. Defaults to true. */
-  editable?: boolean;
-  onValidationChange?: (errors: ValidationError[]) => void;
-  onActiveQuestionChange?: (questionId: string | null) => void;
-  /** Fired once when the active test path reaches a leaf node. */
-  onLeafReached?: (nodeId: string) => void;
-};
+// ════════════════════════════════════════════════════════════════════════
+// Shared animation + structural mutations (used by both canvases)
+// ════════════════════════════════════════════════════════════════════════
 
-export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
-  { testing, editable = true, onValidationChange, onActiveQuestionChange, onLeafReached },
-  ref
+function useTreeMutations(
+  nodesRef: React.MutableRefObject<Node[]>,
+  edgesRef: React.MutableRefObject<Edge[]>,
+  setNodes: React.Dispatch<React.SetStateAction<Node[]>>,
+  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>,
+  // Manual mode deliberately pans the camera to each node it touches. Algorithm mode builds
+  // nodes off-camera far more often (auto-build especially), where panning ahead of a node
+  // that doesn't exist yet made the tree flash empty before it flew in — so it opts out and
+  // relies on a bounds-based fitView instead (see AlgorithmCanvas).
+  focusOnMutate = true
 ) {
-  const { controledRobot, robotConfigs } = useScenario();
-  const [nodes, setNodes] = useState<Node[]>(() => loadTree().nodes);
-  const [edges, setEdges] = useState<Edge[]>(() => loadTree().edges);
-  const [activeHandles, setActiveHandles] = useState<Map<string, 'yes' | 'no'>>(new Map());
-  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
-  const { setCenter } = useReactFlow();
-
-  const nodesRef = useRef<Node[]>(nodes);
-  const edgesRef = useRef<Edge[]>(edges);
-  const activeHandlesRef = useRef<Map<string, 'yes' | 'no'>>(new Map());
+  const { setCenter, fitView } = useReactFlow();
   const animRafRef = useRef<number | null>(null);
   const panTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onValidationRef = useRef(onValidationChange);
-  const onActiveQuestionRef = useRef(onActiveQuestionChange);
-  const onLeafReachedRef = useRef(onLeafReached);
-  useLayoutEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-  useLayoutEffect(() => {
-    edgesRef.current = edges;
-  }, [edges]);
-  useLayoutEffect(() => {
-    activeHandlesRef.current = activeHandles;
-  }, [activeHandles]);
-  useLayoutEffect(() => {
-    onValidationRef.current = onValidationChange;
-  }, [onValidationChange]);
-  useLayoutEffect(() => {
-    onActiveQuestionRef.current = onActiveQuestionChange;
-  }, [onActiveQuestionChange]);
-  useLayoutEffect(() => {
-    onLeafReachedRef.current = onLeafReached;
-  }, [onLeafReached]);
 
-  useEffect(() => {
-    if (!testing) {
-      setActiveHandles(new Map());
-    }
-  }, [testing]);
-
-  // ── Persist tree to localStorage (debounced, no positions) ──
-  useEffect(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-    }
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({
-            nodes: nodes.map(({ id, type, data }) => ({ id, type, position: { x: 0, y: 0 }, data })),
-            edges: edges.map(({ id, source, sourceHandle, target }) => ({ id, source, sourceHandle, target })),
-          })
-        );
-      } catch {
-        // ignore quota errors
-      }
-    }, 500);
-  }, [nodes, edges]);
-
-  // ── rAF animation ─────────────────────────────────────────
   // startOverrides: initial position for newly added nodes (keyed by id).
   // By default, new nodes (not in nodesRef) would start at their target
   // position. Passing the parent's position here makes them slide in.
@@ -461,10 +401,10 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       }
       animRafRef.current = requestAnimationFrame(tick);
     },
-    []
+    [nodesRef, setNodes]
   );
 
-  // ── Viewport focus → then layout animation ────────────────
+  // Pans the viewport to the focus node first, then swaps edges and animates the new layout in.
   const focusThenAnimate = useCallback(
     (
       targetNodes: Node[],
@@ -493,7 +433,226 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
         focusNode ? PAN_DURATION + PAN_BUFFER : 0
       );
     },
-    [setCenter, animateToNodes]
+    [setCenter, setEdges, animateToNodes]
+  );
+
+  // Adds a bare (unconfigured) decision node as the tree's very first node, under root.
+  const addFirstChild = useCallback(() => {
+    const newId = crypto.randomUUID();
+    const nextEdges = [
+      ...edgesRef.current,
+      { id: `root-out-${newId}`, source: 'root', sourceHandle: 'out', target: newId },
+    ];
+    const nextNodes = [
+      ...nodesRef.current,
+      { id: newId, type: 'decision', position: { x: 0, y: 0 }, data: { questionId: null, validated: false } },
+    ];
+    const laid = layoutTree(nextNodes, nextEdges);
+    const root = nodesRef.current.find(n => n.id === 'root');
+    const overrides = root ? { [newId]: root.position } : undefined;
+    if (focusOnMutate) {
+      focusThenAnimate(laid, nextEdges, newId, overrides);
+    } else {
+      setEdges(nextEdges);
+      animateToNodes(laid, overrides);
+    }
+  }, [edgesRef, nodesRef, focusThenAnimate, animateToNodes, setEdges, focusOnMutate]);
+
+  // Removes a node and its whole subtree, panning to where it was before relaying out.
+  const deleteNode = useCallback(
+    (nodeId: string, onAfterDelete?: (removedIds: Set<string>) => void) => {
+      const deletedNode = nodesRef.current.find(n => n.id === nodeId);
+
+      const toRemove = new Set([nodeId, ...getDescendants(nodeId, edgesRef.current)]);
+      const nextEdges = edgesRef.current.filter(e => !toRemove.has(e.source) && !toRemove.has(e.target));
+      const nextNodes = nodesRef.current.filter(n => !toRemove.has(n.id));
+      const laid = layoutTree(nextNodes, nextEdges);
+      onAfterDelete?.(toRemove);
+
+      if (deletedNode && focusOnMutate) {
+        const cx = deletedNode.position.x + getNodeWidth(deletedNode.type) / 2;
+        const cy = deletedNode.position.y + getNodeHeight(deletedNode.type) / 2;
+        setCenter(cx, cy, { zoom: FOCUS_ZOOM, duration: PAN_DURATION });
+        if (panTimerRef.current) {
+          clearTimeout(panTimerRef.current);
+        }
+        panTimerRef.current = setTimeout(() => {
+          setEdges(nextEdges);
+          animateToNodes(laid);
+          panTimerRef.current = null;
+        }, PAN_DURATION + PAN_BUFFER);
+      } else {
+        setEdges(nextEdges);
+        animateToNodes(laid);
+      }
+    },
+    [nodesRef, edgesRef, setCenter, setEdges, animateToNodes, focusOnMutate]
+  );
+
+  return { animateToNodes, focusThenAnimate, addFirstChild, deleteNode, fitView };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Algorithm mode: auto-build cadence + Valider overlay
+// ════════════════════════════════════════════════════════════════════════
+
+const AUTO_STEP_MS = 350;
+const AUTO_SETTLE_MS = 400;
+const AUTO_FINALIZE_MS = 500;
+
+type PendingValidation = { nodeId: string; x: number; y: number; onValidate: () => void };
+
+/**
+ * Renders Valider buttons as plain HTML, positioned by hand-replicating xyflow's own
+ * viewport transform (translate + scale) — kept outside `.react-flow__pane` so its clicks
+ * are never intercepted by the pane's native pan/drag gesture recognizer.
+ */
+function ValidateOverlay({ targets }: { targets: PendingValidation[] }) {
+  const { x, y, zoom } = useViewport();
+
+  if (targets.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          transform: `translate(${x}px, ${y}px) scale(${zoom})`,
+          transformOrigin: '0 0',
+        }}
+      >
+        {targets.map(t => (
+          <div key={t.nodeId} className="absolute pointer-events-auto" style={{ left: t.x, top: t.y }}>
+            <ValidateCard onValidate={t.onValidate} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Manual tree canvas — steps 2 / 4 / 5: user builds/edits the tree freely
+// and can run robots through it.
+// ════════════════════════════════════════════════════════════════════════
+
+type ManualTreeProps = {
+  testing: boolean;
+  /** Whether the tree structure (nodes, questions, decisions) can be edited. Defaults to true. */
+  editable?: boolean;
+  onValidationChange?: (errors: ValidationError[]) => void;
+  onActiveQuestionChange?: (questionId: string | null) => void;
+  /** Fired once when the active test path reaches a leaf node. */
+  onLeafReached?: (nodeId: string) => void;
+  /** Show which tested robots land on which leaf, and whether that matches their terrain observation. */
+  robotPlacement?: boolean;
+  /** Reports how many tested+observed robots the current tree classifies correctly, whenever it changes. */
+  onClassificationChange?: (stats: { total: number; correct: number }) => void;
+};
+
+const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(function ManualTreeCanvas(
+  {
+    testing,
+    editable = true,
+    robotPlacement = false,
+    onValidationChange,
+    onActiveQuestionChange,
+    onLeafReached,
+    onClassificationChange,
+  },
+  ref
+) {
+  const { controledRobot, robotConfigs, physicalRobotData, externalDataset } = useScenario();
+  const [nodes, setNodes] = useState<Node[]>(() => loadTree().nodes);
+  const [edges, setEdges] = useState<Edge[]>(() => loadTree().edges);
+  const [activeHandles, setActiveHandles] = useState<Map<string, 'yes' | 'no'>>(new Map());
+  const [highlightedNodeId, setHighlightedNodeId] = useState<string | null>(null);
+  const [viewingRobot, setViewingRobot] = useState<ViewingRobot | null>(null);
+  const { setCenter } = useReactFlow();
+
+  const nodesRef = useRef<Node[]>(nodes);
+  const edgesRef = useRef<Edge[]>(edges);
+  const activeHandlesRef = useRef<Map<string, 'yes' | 'no'>>(new Map());
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onValidationRef = useRef(onValidationChange);
+  const onActiveQuestionRef = useRef(onActiveQuestionChange);
+  const onLeafReachedRef = useRef(onLeafReached);
+  useLayoutEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+  useLayoutEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+  useLayoutEffect(() => {
+    activeHandlesRef.current = activeHandles;
+  }, [activeHandles]);
+  useLayoutEffect(() => {
+    onValidationRef.current = onValidationChange;
+  }, [onValidationChange]);
+  useLayoutEffect(() => {
+    onActiveQuestionRef.current = onActiveQuestionChange;
+  }, [onActiveQuestionChange]);
+  useLayoutEffect(() => {
+    onLeafReachedRef.current = onLeafReached;
+  }, [onLeafReached]);
+  const onClassificationRef = useRef(onClassificationChange);
+  useLayoutEffect(() => {
+    onClassificationRef.current = onClassificationChange;
+  }, [onClassificationChange]);
+
+  useEffect(() => {
+    if (!testing) {
+      setActiveHandles(new Map());
+    }
+  }, [testing]);
+
+  // ── Persist tree to localStorage (debounced, no positions) ──
+  useEffect(() => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            nodes: nodes.map(({ id, type, data }) => ({ id, type, position: { x: 0, y: 0 }, data })),
+            edges: edges.map(({ id, source, sourceHandle, target }) => ({ id, source, sourceHandle, target })),
+          })
+        );
+      } catch {
+        // ignore quota errors
+      }
+    }, 500);
+  }, [nodes, edges]);
+
+  const { animateToNodes, focusThenAnimate, addFirstChild, deleteNode } = useTreeMutations(
+    nodesRef,
+    edgesRef,
+    setNodes,
+    setEdges
+  );
+
+  const onPlacementClick = useCallback(
+    (uuid: string) => {
+      const physical = robotConfigs.find(r => r.uuid === uuid);
+      if (physical) {
+        const colorDef = ROBOT_COLORS.find(c => c.id === physical.color);
+        setViewingRobot({ uuid, label: colorDef?.label ?? physical.color });
+        return;
+      }
+      const ext = externalDataset.find(e => e.id === uuid);
+      if (ext) {
+        setViewingRobot({ uuid, label: ext.label, entryOverride: ext });
+      }
+    },
+    [robotConfigs, externalDataset]
   );
 
   // ── Robot info ────────────────────────────────────────────
@@ -510,24 +669,58 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
     };
   }, [controledRobot, robotConfigs]);
 
+  // ── Robot placement: which leaf does each tested robot land on? ──
+  const { leafPlacements, classificationStats } = useMemo(() => {
+    const map = new Map<string, RobotPlacement[]>();
+    const stats = { total: 0, correct: 0 };
+    if (!robotPlacement) {
+      return { leafPlacements: map, classificationStats: stats };
+    }
+
+    const addPlacement = (entry: RobotEntry, uuid: string, color: string, label: string, countTowardStats: boolean) => {
+      if (
+        countTowardStats &&
+        entry.observation != null &&
+        ALL_CRITERIA.every(c => entry.testResults[c] !== undefined)
+      ) {
+        stats.total += 1;
+      }
+      const leaf = walkToLeaf(entry.testResults, nodes, edges);
+      if (!leaf) {
+        return;
+      }
+      const predictedReady = leaf.data.decision as boolean | null;
+      const observedCategory = entry.observation?.category ?? null;
+      const matches =
+        predictedReady === null || observedCategory === null ? null : predictedReady === (observedCategory === 'ready');
+      if (countTowardStats && matches === true) {
+        stats.correct += 1;
+      }
+      const placement: RobotPlacement = { uuid, color, label, matches };
+      map.set(leaf.id, [...(map.get(leaf.id) ?? []), placement]);
+    };
+
+    for (const r of robotConfigs) {
+      const entry = physicalRobotData[r.uuid];
+      if (!entry) {
+        continue;
+      }
+      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
+      addPlacement(entry, r.uuid, colorDef?.hex ?? '#a1a1a1', colorDef?.label ?? r.color, true);
+    }
+    for (const e of externalDataset) {
+      addPlacement(e, e.id, '#94a3b8', e.label, false);
+    }
+    return { leafPlacements: map, classificationStats: stats };
+  }, [robotPlacement, robotConfigs, physicalRobotData, externalDataset, nodes, edges]);
+
+  useEffect(() => {
+    if (robotPlacement) {
+      onClassificationRef.current?.(classificationStats);
+    }
+  }, [robotPlacement, classificationStats]);
+
   // ── Mutations ─────────────────────────────────────────────
-  const addFirstChild = useCallback(() => {
-    const newId = crypto.randomUUID();
-    const nextEdges = [
-      ...edgesRef.current,
-      { id: `root-out-${newId}`, source: 'root', sourceHandle: 'out', target: newId },
-    ];
-    const nextNodes = [
-      ...nodesRef.current,
-      { id: newId, type: 'decision', position: { x: 0, y: 0 }, data: { questionId: null } },
-    ];
-    const laid = layoutTree(nextNodes, nextEdges);
-
-    // New node slides in from the root's current position
-    const root = nodesRef.current.find(n => n.id === 'root');
-    focusThenAnimate(laid, nextEdges, newId, root ? { [newId]: root.position } : undefined);
-  }, [focusThenAnimate]);
-
   const addChild = useCallback(
     (parentId: string, handle: 'yes' | 'no', type: 'decision' | 'leaf') => {
       const newId = crypto.randomUUID();
@@ -551,35 +744,6 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       focusThenAnimate(laid, nextEdges, newId, parent ? { [newId]: parent.position } : undefined);
     },
     [focusThenAnimate]
-  );
-
-  const deleteNode = useCallback(
-    (nodeId: string) => {
-      const deletedNode = nodesRef.current.find(n => n.id === nodeId);
-
-      const toRemove = new Set([nodeId, ...getDescendants(nodeId, edgesRef.current)]);
-      const nextEdges = edgesRef.current.filter(e => !toRemove.has(e.source) && !toRemove.has(e.target));
-      const nextNodes = nodesRef.current.filter(n => !toRemove.has(n.id));
-      const laid = layoutTree(nextNodes, nextEdges);
-
-      if (deletedNode) {
-        const cx = deletedNode.position.x + getNodeWidth(deletedNode.type) / 2;
-        const cy = deletedNode.position.y + getNodeHeight(deletedNode.type) / 2;
-        setCenter(cx, cy, { zoom: FOCUS_ZOOM, duration: PAN_DURATION });
-        if (panTimerRef.current) {
-          clearTimeout(panTimerRef.current);
-        }
-        panTimerRef.current = setTimeout(() => {
-          setEdges(nextEdges);
-          animateToNodes(laid);
-          panTimerRef.current = null;
-        }, PAN_DURATION + PAN_BUFFER);
-      } else {
-        setEdges(nextEdges);
-        animateToNodes(laid);
-      }
-    },
-    [setCenter, animateToNodes]
   );
 
   const onChangeQuestion = useCallback((nodeId: string, questionId: string) => {
@@ -701,7 +865,12 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             editable,
             highlighted: highlightedNodeId === node.id,
           };
-          return { ...node, data: d as Record<string, unknown> };
+          return {
+            ...node,
+            data: d as Record<string, unknown>,
+            width: getNodeWidth('root'),
+            height: getNodeHeight('root'),
+          };
         }
         if (node.type === 'decision') {
           const d: DecisionNodeData = {
@@ -724,7 +893,12 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             isOnActivePath: activePath.has(node.id),
           };
           const hasAddButtons = editable && !testing && (!d.usedHandles.yes || !d.usedHandles.no);
-          return { ...node, data: d as Record<string, unknown>, height: getNodeHeight('decision', hasAddButtons) };
+          return {
+            ...node,
+            data: d as Record<string, unknown>,
+            width: getNodeWidth('decision'),
+            height: getNodeHeight('decision', hasAddButtons),
+          };
         }
         if (node.type === 'leaf') {
           const d: LeafNodeData = {
@@ -733,10 +907,17 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
             highlighted: highlightedNodeId === node.id,
             testing,
             editable,
+            placements: leafPlacements.get(node.id) ?? [],
             onChangeDecision,
             onDelete: deleteNode,
+            onPlacementClick,
           };
-          return { ...node, data: d as Record<string, unknown> };
+          return {
+            ...node,
+            data: d as Record<string, unknown>,
+            width: getNodeWidth('leaf'),
+            height: getNodeHeight('leaf'),
+          };
         }
         return node;
       }),
@@ -750,15 +931,15 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       onChangeQuestion,
       onSetActiveHandle,
       onChangeDecision,
+      onPlacementClick,
       testing,
       editable,
       activeHandles,
       activePath,
       highlightedNodeId,
+      leafPlacements,
     ]
   );
-
-  const nodeTypes: NodeTypes = useMemo(() => ({ root: RootNode, decision: DecisionNode, leaf: LeafNode }), []);
 
   const onNodesChange: OnNodesChange = useCallback(changes => {
     const filtered = changes.filter(c => c.type !== 'position');
@@ -793,7 +974,7 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       <ReactFlow
         nodes={enrichedNodes}
         edges={enrichedEdges}
-        nodeTypes={nodeTypes}
+        nodeTypes={NODE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodesDraggable={false}
@@ -804,6 +985,567 @@ export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(fu
       >
         <Controls />
       </ReactFlow>
+      <EditRobotModal
+        uuid={viewingRobot?.uuid ?? null}
+        label={viewingRobot?.label ?? ''}
+        entryOverride={viewingRobot?.entryOverride}
+        onClose={() => setViewingRobot(null)}
+      />
     </div>
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// Algorithm tree canvas — step 6: the tree is built via the guided
+// question → auto-categorize → validate flow, ending in an automatic build.
+// ════════════════════════════════════════════════════════════════════════
+
+function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
+  const { setAlgorithmTree } = useScenario();
+
+  const [nodes, setNodes] = useState<Node[]>(() => [{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  const [autoBuildQueue, setAutoBuildQueue] = useState<string[]>([]);
+  const [validateModal, setValidateModal] = useState<{ nodeId: string; status: AlgorithmValidateModalStatus } | null>(
+    null
+  );
+  // Per-node set of question ids the user has already tried (selected) at least once —
+  // the Valider button only shows once every candidate has been tried.
+  const [triedIds, setTriedIds] = useState<Map<string, Set<string>>>(new Map());
+  const [viewingRobot, setViewingRobot] = useState<ViewingRobot | null>(null);
+
+  const nodesRef = useRef(nodes);
+  const edgesRef = useRef(edges);
+  const datasetRef = useRef(dataset);
+  const validateModalRef = useRef(validateModal);
+  const autoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  nodesRef.current = nodes;
+  edgesRef.current = edges;
+  datasetRef.current = dataset;
+  validateModalRef.current = validateModal;
+
+  const { animateToNodes, addFirstChild, deleteNode, fitView } = useTreeMutations(
+    nodesRef,
+    edgesRef,
+    setNodes,
+    setEdges,
+    false
+  );
+
+  const onPlacementClick = useCallback(
+    (uuid: string) => {
+      const entry = dataset.find(e => e.id === uuid);
+      if (!entry) {
+        return;
+      }
+      setViewingRobot({
+        uuid,
+        label: entry.label,
+        entryOverride: {
+          testResults: entry.testResults,
+          lockedCriteria: {},
+          tested: true,
+          observation: { category: entry.category, notes: '' },
+        },
+      });
+    },
+    [dataset]
+  );
+
+  const datasetKey = dataset
+    .map(e => e.id)
+    .sort()
+    .join(',');
+  const initializedKeyRef = useRef(datasetKey);
+  useEffect(() => {
+    if (datasetKey !== initializedKeyRef.current) {
+      initializedKeyRef.current = datasetKey;
+      setNodes([{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
+      setEdges([]);
+      setAutoBuildQueue([]);
+      setValidateModal(null);
+      setTriedIds(new Map());
+    }
+  }, [datasetKey]);
+
+  useEffect(() => {
+    const rootEdge = edges.find(e => e.source === 'root' && e.sourceHandle === 'out');
+    setAlgorithmTree(rootEdge ? toAlgoTree(rootEdge.target, nodes, edges) : { type: 'pending' });
+  }, [nodes, edges, setAlgorithmTree]);
+
+  // ── Core mutation: assign a question to a decision node, always auto-categorizing both
+  //    branches with opposite categories (whichever pairing minimizes total error). ──
+  const applyQuestionToNode = useCallback(
+    (nodeId: string, questionId: string) => {
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+      const node = currentNodes.find(n => n.id === nodeId);
+      if (!node) {
+        return;
+      }
+      const wasFirstPick = !node.data.questionId;
+      const entries = computeEntriesForNode(nodeId, currentNodes, currentEdges, datasetRef.current);
+      const yesEntries = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'yes');
+      const noEntries = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'no');
+      const { yesReady, noReady } = resolveBranchCategories(yesEntries, noEntries);
+
+      if (wasFirstPick) {
+        const yesId = `${nodeId}-yes`;
+        const noId = `${nodeId}-no`;
+        const nextEdges = [
+          ...currentEdges,
+          { id: `${nodeId}-e-yes`, source: nodeId, sourceHandle: 'yes', target: yesId },
+          { id: `${nodeId}-e-no`, source: nodeId, sourceHandle: 'no', target: noId },
+        ];
+        const nextNodes = [
+          ...currentNodes.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, questionId } } : n)),
+          { id: yesId, type: 'leaf', position: { x: 0, y: 0 }, data: { decision: yesReady } },
+          { id: noId, type: 'leaf', position: { x: 0, y: 0 }, data: { decision: noReady } },
+        ];
+        setEdges(nextEdges);
+        // New leaves slide out from their parent question node.
+        animateToNodes(layoutTree(nextNodes, nextEdges), { [yesId]: node.position, [noId]: node.position });
+      } else {
+        const yesEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'yes');
+        const noEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'no');
+        const nextNodes = currentNodes.map(n => {
+          if (n.id === nodeId) {
+            return { ...n, data: { ...n.data, questionId } };
+          }
+          if (yesEdge && n.id === yesEdge.target) {
+            return { ...n, data: { decision: yesReady } };
+          }
+          if (noEdge && n.id === noEdge.target) {
+            return { ...n, data: { decision: noReady } };
+          }
+          return n;
+        });
+        setNodes(nextNodes);
+      }
+
+      setTriedIds(prev => {
+        const next = new Map(prev);
+        const set = new Set(next.get(nodeId) ?? []);
+        set.add(questionId);
+        next.set(nodeId, set);
+        return next;
+      });
+    },
+    [animateToNodes]
+  );
+
+  // ── Validate a node: locks it in, converts impure leaves back into fresh decision nodes ──
+  const resolveChildren = useCallback(
+    (nodeId: string, forceAuto: boolean): string[] => {
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+      const depth = getAncestorDecisionCount(nodeId, currentEdges) + 1;
+      const yesEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'yes');
+      const noEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'no');
+
+      let nextNodes = currentNodes.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, validated: true } } : n));
+      const toQueue: string[] = [];
+
+      for (const edge of [yesEdge, noEdge]) {
+        if (!edge) {
+          continue;
+        }
+        const leafId = edge.target;
+        const leafEntries = computeEntriesForNode(leafId, currentNodes, currentEdges, datasetRef.current);
+        if (isPureSet(leafEntries)) {
+          continue; // keep as leaf, already correctly categorized
+        }
+        nextNodes = nextNodes.map(n =>
+          n.id === leafId
+            ? { id: leafId, type: 'decision', position: n.position, data: { questionId: null, validated: false } }
+            : n
+        );
+        if (forceAuto || depth + 1 >= 3) {
+          toQueue.push(leafId);
+        }
+      }
+
+      animateToNodes(layoutTree(nextNodes, currentEdges));
+      return toQueue;
+    },
+    [animateToNodes]
+  );
+
+  const handleValidate = useCallback((nodeId: string) => {
+    const currentNodes = nodesRef.current;
+    const currentEdges = edgesRef.current;
+    const node = currentNodes.find(n => n.id === nodeId);
+    if (!node || node.type !== 'decision' || !node.data.questionId) {
+      return;
+    }
+    const entries = computeEntriesForNode(nodeId, currentNodes, currentEdges, datasetRef.current);
+    const usedIds = getAncestorQuestionIds(nodeId, currentNodes, currentEdges);
+    const candidates = QUESTIONS.filter(q => !usedIds.includes(q.id));
+    const currentError = errorCountForQuestion(entries, node.data.questionId as string);
+    const minError =
+      candidates.length > 0 ? Math.min(...candidates.map(q => errorCountForQuestion(entries, q.id))) : currentError;
+
+    if (currentError > minError) {
+      setValidateModal({ nodeId, status: 'reject' });
+      return;
+    }
+    const depth = getAncestorDecisionCount(nodeId, currentEdges) + 1;
+    setValidateModal({ nodeId, status: depth >= 2 ? 'complete' : 'success' });
+  }, []);
+
+  // Applied once the user dismisses the success/complete modal — actually locks the question
+  // in and converts impure branches into fresh (or auto-queued) decision nodes.
+  const handleConfirmValidate = useCallback(() => {
+    const current = validateModalRef.current;
+    setValidateModal(null);
+    if (current && current.status !== 'reject') {
+      const toQueue = resolveChildren(current.nodeId, false);
+      if (toQueue.length > 0) {
+        setAutoBuildQueue(q => [...q, ...toQueue]);
+      }
+    }
+  }, [resolveChildren]);
+
+  const handleCloseValidateModal = useCallback(() => {
+    setValidateModal(null);
+  }, []);
+
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      deleteNode(nodeId, removedIds => {
+        setAutoBuildQueue(q => q.filter(id => !removedIds.has(id)));
+        setTriedIds(prev => {
+          const next = new Map(prev);
+          for (const id of removedIds) {
+            next.delete(id);
+          }
+          return next;
+        });
+      });
+    },
+    [deleteNode]
+  );
+
+  const noop = useCallback(() => {}, []);
+
+  // ── Auto-build: drains the queue one node at a time, cycling through every candidate question ──
+  useEffect(() => {
+    if (autoBuildQueue.length === 0) {
+      return;
+    }
+    const nodeId = autoBuildQueue[0];
+    const entries = computeEntriesForNode(nodeId, nodesRef.current, edgesRef.current, datasetRef.current);
+    const usedIds = getAncestorQuestionIds(nodeId, nodesRef.current, edgesRef.current);
+    const candidates = QUESTIONS.filter(q => !usedIds.includes(q.id));
+
+    if (isPureSet(entries) || candidates.length === 0) {
+      const label = majorityCategory(entries);
+      animateToNodes(
+        layoutTree(
+          nodesRef.current.map(n =>
+            n.id === nodeId ? { id: nodeId, type: 'leaf', position: n.position, data: { decision: label } } : n
+          ),
+          edgesRef.current
+        )
+      );
+      setAutoBuildQueue(q => q.slice(1));
+      return;
+    }
+
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let i = 0;
+    const step = () => {
+      if (cancelled) {
+        return;
+      }
+      applyQuestionToNode(nodeId, candidates[i].id);
+      i++;
+      if (i < candidates.length) {
+        timers.push(setTimeout(step, AUTO_STEP_MS));
+      } else {
+        timers.push(
+          setTimeout(() => {
+            if (cancelled) {
+              return;
+            }
+            const best = [...candidates].sort(
+              (a, b) => errorCountForQuestion(entries, a.id) - errorCountForQuestion(entries, b.id)
+            )[0];
+            applyQuestionToNode(nodeId, best.id);
+            timers.push(
+              setTimeout(() => {
+                if (cancelled) {
+                  return;
+                }
+                const toQueue = resolveChildren(nodeId, true);
+                setAutoBuildQueue(q => [...q.slice(1), ...toQueue]);
+              }, AUTO_FINALIZE_MS)
+            );
+          }, AUTO_SETTLE_MS)
+        );
+      }
+    };
+    step();
+    autoTimersRef.current = timers;
+    return () => {
+      cancelled = true;
+      for (const t of timers) {
+        clearTimeout(t);
+      }
+    };
+  }, [autoBuildQueue, applyQuestionToNode, resolveChildren, animateToNodes]);
+
+  // ── Keep the whole tree in view as it grows ─────────────────
+  // Algorithm mode never pans the camera to a specific node (see useTreeMutations), so this
+  // is its only viewport-adjustment mechanism. Keyed on a bounds signature (including each
+  // node's width/height, not just its x/y) rather than raw nodes/edges references: re-
+  // categorizing a leaf during auto-build cycling changes neither node count nor position,
+  // so it shouldn't restart a fitView transition — only genuine layout changes (new nodes, a
+  // leaf swapping into a wider decision card, a deletion) should.
+  const boundsKey = useMemo(() => {
+    if (nodes.length === 0) {
+      return '';
+    }
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.position.x);
+      minY = Math.min(minY, n.position.y);
+      maxX = Math.max(maxX, n.position.x + getNodeWidth(n.type));
+      maxY = Math.max(maxY, n.position.y + getNodeHeight(n.type));
+    }
+    return `${nodes.length}:${minX},${minY},${maxX},${maxY}`;
+  }, [nodes]);
+  useEffect(() => {
+    // fitView reads xyflow's internal store, which mirrors whatever `nodes` currently holds —
+    // and `nodes` is still mid-slide for the ANIM_DURATION of the position animation triggered
+    // by this same change. Firing immediately would fit to a transient mid-slide snapshot and
+    // could leave the true final layout out of frame. Waiting for the slide to settle first
+    // also naturally coalesces bursts of rapid changes (auto-build cycling) into a single
+    // adjustment instead of restarting one fitView transition on top of another.
+    const timer = setTimeout(() => {
+      fitView({ padding: 0.3, maxZoom: 1, duration: 400 });
+    }, ANIM_DURATION + 60);
+    return () => clearTimeout(timer);
+  }, [boundsKey, fitView]);
+
+  // ── Enrich nodes for rendering ──────────────────────────────
+  const { enrichedNodes, pendingValidations } = useMemo(() => {
+    const isAutoQueued = (id: string) => autoBuildQueue.includes(id);
+
+    const result: Node[] = nodes.map(node => {
+      if (node.type === 'root') {
+        const d: RootNodeData = {
+          colorId: '',
+          robotLabel: '',
+          hasChild: edges.some(e => e.source === 'root'),
+          onAddFirstChild: addFirstChild,
+          testing: false,
+          editable: true,
+          highlighted: false,
+        };
+        return {
+          ...node,
+          data: d as Record<string, unknown>,
+          width: getNodeWidth('root'),
+          height: getNodeHeight('root'),
+        };
+      }
+      if (node.type === 'decision') {
+        const depth = getAncestorDecisionCount(node.id, edges) + 1;
+        const validated = node.data.validated === true;
+        const auto = isAutoQueued(node.id);
+        const editable = !validated && !auto && depth <= 2;
+        const questionId = node.data.questionId as string | null;
+        // Only shown for the node currently being chosen — hidden once locked in.
+        const errorBadge =
+          !validated && questionId
+            ? errorCountForQuestion(computeEntriesForNode(node.id, nodes, edges, dataset), questionId)
+            : undefined;
+        const d: DecisionNodeData = {
+          questionId,
+          // Always reported as "used" — algorithm mode auto-creates both branches, no manual add.
+          usedHandles: { yes: true, no: true },
+          ancestorQuestionIds: getAncestorQuestionIds(node.id, nodes, edges),
+          descendantQuestionIds: getDescendantQuestionIds(node.id, nodes, edges),
+          ancestorCount: depth - 1,
+          highlighted: false,
+          onAddChild: noop,
+          onChangeQuestion: (id, qId) => applyQuestionToNode(id, qId),
+          onSetActiveHandle: noop,
+          onDelete: handleDeleteNode,
+          testing: false,
+          editable,
+          activeHandle: null,
+          isOnActivePath: false,
+          errorBadge,
+        };
+        return {
+          ...node,
+          data: d as Record<string, unknown>,
+          width: getNodeWidth('decision'),
+          height: getNodeHeight('decision', false),
+        };
+      }
+      if (node.type === 'leaf') {
+        const entries = computeEntriesForNode(node.id, nodes, edges, dataset);
+        const decision = node.data.decision as boolean | null;
+        const placements: RobotPlacement[] = entries.map(e => ({
+          uuid: e.id,
+          color: e.color,
+          label: e.label,
+          matches: decision === null || decision === undefined ? null : decision === (e.category === 'ready'),
+        }));
+        const d: LeafNodeData = {
+          decision,
+          isOnActivePath: false,
+          highlighted: false,
+          testing: false,
+          // Categorization is always automatic in algorithm mode — never user-editable.
+          editable: false,
+          placements,
+          onChangeDecision: noop,
+          onDelete: handleDeleteNode,
+          onPlacementClick,
+        };
+        return {
+          ...node,
+          data: d as Record<string, unknown>,
+          width: getNodeWidth('leaf'),
+          height: getNodeHeight('leaf'),
+        };
+      }
+      return node;
+    });
+
+    // Pending "Valider" targets next to every in-progress decision node — only once every
+    // candidate question available at that node has been tried at least once.
+    const validations: PendingValidation[] = [];
+    for (const node of nodes) {
+      if (node.type !== 'decision' || node.data.validated || isAutoQueued(node.id) || !node.data.questionId) {
+        continue;
+      }
+      const depth = getAncestorDecisionCount(node.id, edges) + 1;
+      if (depth > 2) {
+        continue;
+      }
+      const usedIds = getAncestorQuestionIds(node.id, nodes, edges);
+      const candidates = QUESTIONS.filter(q => !usedIds.includes(q.id));
+      const tried = triedIds.get(node.id) ?? new Set<string>();
+      if (!candidates.every(q => tried.has(q.id))) {
+        continue;
+      }
+      validations.push({
+        nodeId: node.id,
+        x: node.position.x + getNodeWidth('decision') / 2 - VALIDATE_WIDTH / 2,
+        y: node.position.y + 105,
+        onValidate: () => handleValidate(node.id),
+      });
+    }
+
+    return { enrichedNodes: result, pendingValidations: validations };
+  }, [
+    nodes,
+    edges,
+    dataset,
+    autoBuildQueue,
+    triedIds,
+    applyQuestionToNode,
+    addFirstChild,
+    handleDeleteNode,
+    onPlacementClick,
+    handleValidate,
+    noop,
+  ]);
+
+  return (
+    <div className="w-full h-full relative">
+      <ReactFlow
+        nodes={enrichedNodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        nodesDraggable={false}
+        nodesConnectable={false}
+        defaultEdgeOptions={{ selectable: false, style: { stroke: '#808080', strokeWidth: 1.5 } }}
+        fitView
+        fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+      >
+        <Controls />
+      </ReactFlow>
+      <ValidateOverlay targets={pendingValidations} />
+      <AlgorithmValidateModal
+        status={validateModal?.status ?? null}
+        onClose={handleCloseValidateModal}
+        onConfirm={handleConfirmValidate}
+      />
+      <EditRobotModal
+        uuid={viewingRobot?.uuid ?? null}
+        label={viewingRobot?.label ?? ''}
+        entryOverride={viewingRobot?.entryOverride}
+        onClose={() => setViewingRobot(null)}
+      />
+    </div>
+  );
+}
+
+function AlgorithmTreeCanvas() {
+  const { robotConfigs, physicalRobotData, externalDataset } = useScenario();
+
+  const dataset: DatasetEntry[] = [
+    ...robotConfigs.flatMap((r): DatasetEntry[] => {
+      const entry = physicalRobotData[r.uuid];
+      if (!entry?.observation || !ALL_CRITERIA.every(c => entry.testResults[c] !== undefined)) {
+        return [];
+      }
+      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
+      return [
+        {
+          id: r.uuid,
+          label: colorDef?.label ?? r.color,
+          color: colorDef?.hex ?? '#a1a1a1',
+          testResults: entry.testResults,
+          category: entry.observation.category,
+        },
+      ];
+    }),
+    ...externalDataset.flatMap((e): DatasetEntry[] =>
+      e.observation
+        ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category: e.observation.category }]
+        : []
+    ),
+  ];
+
+  if (dataset.length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-gray-300 text-sm">Aucune donnée disponible pour construire l'algorithme.</p>
+      </div>
+    );
+  }
+
+  return <AlgorithmCanvas dataset={dataset} />;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Public component
+// ════════════════════════════════════════════════════════════════════════
+
+export type DecisionTreeProps = {
+  /** 'manual' (default): free-form editing + robot testing (steps 2/4/5).
+   *  'algorithm': guided question → auto-categorize → validate flow (step 6). */
+  mode?: 'manual' | 'algorithm';
+} & Partial<ManualTreeProps>;
+
+export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
+  { mode = 'manual', ...manualProps },
+  ref
+) {
+  return (
+    <ReactFlowProvider key={mode}>
+      {mode === 'algorithm' ? <AlgorithmTreeCanvas /> : <ManualTreeCanvas ref={ref} testing={false} {...manualProps} />}
+    </ReactFlowProvider>
   );
 });

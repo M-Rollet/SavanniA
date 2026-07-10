@@ -46,8 +46,10 @@ export function RootNode({ data }: NodeProps) {
         className="node-card rounded-xl bg-white shadow-sm border-2 flex flex-col items-center justify-center gap-1.5 p-2 transition-shadow"
         style={{ width: NODE_SIZE, height: NODE_SIZE, boxSizing: 'border-box' }}
       >
-        <img src={icon} alt={robotLabel} style={{ width: 56, height: 56, objectFit: 'contain' }} />
-        <span className="robot-label text-xs font-semibold truncate w-full text-center">{robotLabel}</span>
+        <img src={icon} alt={robotLabel || 'Robot'} style={{ width: 56, height: 56, objectFit: 'contain' }} />
+        {robotLabel && (
+          <span className="robot-label text-xs font-semibold truncate w-full text-center">{robotLabel}</span>
+        )}
       </div>
 
       <Handle type="source" position={Position.Bottom} id="out" />

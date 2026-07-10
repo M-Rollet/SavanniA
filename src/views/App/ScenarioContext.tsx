@@ -1,11 +1,18 @@
-import { createContext, useContext, useCallback, useState, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useCallback, useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Toast } from '@heroui/react/toast';
 import { thymioManagerFactory } from '../../Entities/ThymioManager';
 import { tdmConnectionEvents } from '../../Entities/ThymioManager/tdmConnectionEvents';
 import type { Users } from '../../Entities/ThymioManager/Model/users.model';
 import { useLocalStorage } from '../../helpers/useLocalStorage';
 import { clearSavedTree } from './components/DecisionTree';
-import { getStepDef, STEP_DEFS, type RobotEntry, type ExternalRobotEntry } from './steps/stepDefinitions';
+import {
+  getStepDef,
+  STEP_DEFS,
+  type RobotEntry,
+  type ExternalRobotEntry,
+  type AlgoTree,
+  type TreeAccuracy,
+} from './steps/stepDefinitions';
 
 export const ROBOT_COLORS = [
   { id: 'red', label: 'Rouge', hex: '#ef4444' },
@@ -52,6 +59,20 @@ type ScenarioState = {
   /** Injected non-physical robot dataset (step 5+), kept separate to avoid UUID collisions. */
   externalDataset: ExternalRobotEntry[];
   setExternalDataset: (data: ExternalRobotEntry[]) => void;
+  /** Decision tree built step-by-step in algorithm mode (step 6). */
+  algorithmTree: AlgoTree | null;
+  setAlgorithmTree: (tree: AlgoTree | null) => void;
+  /** How many tested+observed robots the current manual tree (step 4+) classifies correctly. */
+  treeAccuracy: TreeAccuracy | null;
+  setTreeAccuracy: (accuracy: TreeAccuracy | null) => void;
+  /** True once step 2's end-of-step check has found test results that don't match the ground truth. */
+  dataCheckFailed: boolean;
+  setDataCheckFailed: (failed: boolean) => void;
+  /** True once step 3's end-of-step check has found terrain observations that don't match the ground truth. */
+  observationCheckFailed: boolean;
+  setObservationCheckFailed: (failed: boolean) => void;
+  /** Lets SoftwareMain register a callback that stops any in-progress robot test; called before every step advance. */
+  registerStopTesting: (fn: (() => void) | null) => void;
   resetApp: () => void;
   isSettingsOpen: boolean;
   openSettings: () => void;
@@ -72,7 +93,25 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     {}
   );
   const [externalDataset, setExternalDataset] = useLocalStorage<ExternalRobotEntry[]>('scenario:externalDataset', []);
+  const [algorithmTree, setAlgorithmTree] = useState<AlgoTree | null>(null);
+  const [treeAccuracy, setTreeAccuracy] = useState<TreeAccuracy | null>(null);
+  const [dataCheckFailed, setDataCheckFailed] = useState(false);
+  const [observationCheckFailed, setObservationCheckFailed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Only ever relevant on step 2 — clear it once the user leaves that step.
+  useEffect(() => {
+    if (stepIndex !== 2) {
+      setDataCheckFailed(false);
+    }
+  }, [stepIndex]);
+
+  // Only ever relevant on step 3 — clear it once the user leaves that step.
+  useEffect(() => {
+    if (stepIndex !== 3) {
+      setObservationCheckFailed(false);
+    }
+  }, [stepIndex]);
 
   useEffect(() => {
     let errorToastKey: string | null = null;
@@ -116,16 +155,24 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     [setStepIndex]
   );
 
+  // Lets the current step's UI (e.g. SoftwareMain) register a "stop any running test" callback,
+  // invoked right before advancing to the next step.
+  const stopTestingRef = useRef<(() => void) | null>(null);
+  const registerStopTesting = useCallback((fn: (() => void) | null) => {
+    stopTestingRef.current = fn;
+  }, []);
+
   const advanceStep = useCallback(() => {
     const current = getStepDef(stepIndex);
     if (stepIndex >= STEP_DEFS.length) {
       return;
     }
-    if (!current.canAdvance({ physicalRobotData, robotConfigs })) {
+    if (!current.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy })) {
       return;
     }
+    stopTestingRef.current?.();
     setStepIndex(stepIndex + 1);
-  }, [stepIndex, physicalRobotData, robotConfigs, setStepIndex]);
+  }, [stepIndex, physicalRobotData, robotConfigs, algorithmTree, treeAccuracy, setStepIndex]);
 
   // Keep a ref so the auto-assign effect always reads latest teams without re-triggering.
   const robotTeamsRef = useRef(robotTeams);
@@ -157,7 +204,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setRobotTeams(updated);
   }, [robotConfigs]);
 
-  const resetApp = () => {
+  const resetApp = useCallback(() => {
     clearSavedTree();
     setStepIndex(0);
     setControledRobot('');
@@ -165,35 +212,79 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setRobotTeams({});
     setPhysicalRobotData({});
     setExternalDataset([]);
-  };
+    setAlgorithmTree(null);
+    setTreeAccuracy(null);
+  }, [setStepIndex, setControledRobot, setRobotConfigs, setRobotTeams, setPhysicalRobotData, setExternalDataset]);
 
-  return (
-    <ScenarioContext.Provider
-      value={{
-        user,
-        stepIndex,
-        advanceStep,
-        goToStep,
-        controledRobot,
-        selectRobot,
-        initializeRobot,
-        robotConfigs,
-        setRobotConfigs,
-        robotTeams,
-        setRobotTeams,
-        physicalRobotData,
-        setPhysicalRobotData,
-        externalDataset,
-        setExternalDataset,
-        resetApp,
-        isSettingsOpen,
-        openSettings: () => setIsSettingsOpen(true),
-        closeSettings: () => setIsSettingsOpen(false),
-      }}
-    >
-      {children}
-    </ScenarioContext.Provider>
+  const openSettings = useCallback(() => setIsSettingsOpen(true), []);
+  const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
+
+  // Memoized so consumers of useScenario() only re-render when a value they actually read
+  // changes — without this, every ScenarioProvider render (e.g. the 2s robot-status poll)
+  // would hand out a brand-new object and re-render every consumer, tree included.
+  const value = useMemo<ScenarioState>(
+    () => ({
+      user,
+      stepIndex,
+      advanceStep,
+      goToStep,
+      controledRobot,
+      selectRobot,
+      initializeRobot,
+      robotConfigs,
+      setRobotConfigs,
+      robotTeams,
+      setRobotTeams,
+      physicalRobotData,
+      setPhysicalRobotData,
+      externalDataset,
+      setExternalDataset,
+      algorithmTree,
+      setAlgorithmTree,
+      treeAccuracy,
+      setTreeAccuracy,
+      dataCheckFailed,
+      setDataCheckFailed,
+      observationCheckFailed,
+      setObservationCheckFailed,
+      registerStopTesting,
+      resetApp,
+      isSettingsOpen,
+      openSettings,
+      closeSettings,
+    }),
+    [
+      stepIndex,
+      advanceStep,
+      goToStep,
+      controledRobot,
+      selectRobot,
+      initializeRobot,
+      robotConfigs,
+      setRobotConfigs,
+      robotTeams,
+      setRobotTeams,
+      physicalRobotData,
+      setPhysicalRobotData,
+      externalDataset,
+      setExternalDataset,
+      algorithmTree,
+      setAlgorithmTree,
+      treeAccuracy,
+      setTreeAccuracy,
+      dataCheckFailed,
+      setDataCheckFailed,
+      observationCheckFailed,
+      setObservationCheckFailed,
+      registerStopTesting,
+      resetApp,
+      isSettingsOpen,
+      openSettings,
+      closeSettings,
+    ]
   );
+
+  return <ScenarioContext.Provider value={value}>{children}</ScenarioContext.Provider>;
 }
 
 export function useScenario(): ScenarioState {

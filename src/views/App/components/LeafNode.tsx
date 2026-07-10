@@ -1,6 +1,14 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Xmark, CheckShape, Ban } from '@gravity-ui/icons';
+import { Xmark, CheckShape, Ban, Check } from '@gravity-ui/icons';
 import './TreeNodes.css';
+
+export type RobotPlacement = {
+  uuid: string;
+  color: string;
+  label: string;
+  /** true = matches the recorded terrain observation, false = mismatch, null = no observation yet. */
+  matches: boolean | null;
+};
 
 export type LeafNodeData = {
   decision: boolean | null;
@@ -8,8 +16,11 @@ export type LeafNodeData = {
   testing: boolean;
   editable: boolean;
   highlighted: boolean;
+  placements: RobotPlacement[];
   onChangeDecision: (nodeId: string, decision: boolean) => void;
   onDelete: (nodeId: string) => void;
+  /** Fired when a robot placement dot is clicked, so the caller can show that robot's data. */
+  onPlacementClick?: (uuid: string) => void;
 };
 
 export const NODE_WIDTH = 200;
@@ -20,7 +31,17 @@ const OPTIONS = {
 } as const;
 
 export function LeafNode({ id, data }: NodeProps) {
-  const { decision, isOnActivePath, testing, editable, highlighted, onChangeDecision, onDelete } = data as LeafNodeData;
+  const {
+    decision,
+    isOnActivePath,
+    testing,
+    editable,
+    highlighted,
+    placements,
+    onChangeDecision,
+    onDelete,
+    onPlacementClick,
+  } = data as LeafNodeData;
   const canEdit = editable && !testing;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -70,6 +91,92 @@ export function LeafNode({ id, data }: NodeProps) {
             );
           })}
         </div>
+
+        {placements.length > 0 &&
+          (decision === null ? (
+            <div className="px-2.5 pb-2.5 pt-1.5 border-t border-gray-100 flex flex-wrap gap-1 justify-center">
+              {placements.map(p => (
+                <button
+                  key={p.uuid}
+                  title={p.label}
+                  onClick={() => onPlacementClick?.(p.uuid)}
+                  onMouseDown={stopProp}
+                  className="w-3.5 h-3.5 rounded-full shrink-0 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition-shadow"
+                  style={{ backgroundColor: p.color }}
+                />
+              ))}
+            </div>
+          ) : (
+            (() => {
+              const correct = placements.filter(p => p.matches === true);
+              const incorrect = placements.filter(p => p.matches === false);
+              const unclassified = placements.filter(p => p.matches === null);
+              return (
+                <div className="px-2.5 pb-2.5 pt-1.5 border-t border-gray-100">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="flex flex-wrap gap-1 justify-start">
+                      {correct.map(p => (
+                        <button
+                          key={p.uuid}
+                          title={p.label}
+                          onClick={() => onPlacementClick?.(p.uuid)}
+                          onMouseDown={stopProp}
+                          className="relative w-3.5 h-3.5 shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                        >
+                          <span className="absolute inset-0 rounded-full" style={{ backgroundColor: p.color }} />
+                          <Check
+                            width={9}
+                            height={9}
+                            className="absolute -top-1 -right-1 rounded-full bg-white text-green-600 ring-1 ring-white"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1 justify-end">
+                      {incorrect.map(p => (
+                        <button
+                          key={p.uuid}
+                          title={p.label}
+                          onClick={() => onPlacementClick?.(p.uuid)}
+                          onMouseDown={stopProp}
+                          className="relative w-3.5 h-3.5 shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                        >
+                          <span className="absolute inset-0 rounded-full" style={{ backgroundColor: p.color }} />
+                          <Xmark
+                            width={9}
+                            height={9}
+                            className="absolute -top-1 -right-1 rounded-full bg-white text-red-600 ring-1 ring-white"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-[10px] font-medium mt-1">
+                    <span className="text-green-600">
+                      {correct.length} correct{correct.length > 1 ? 's' : ''}
+                    </span>
+                    <span className="text-red-500">
+                      {incorrect.length} incorrect{incorrect.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  {unclassified.length > 0 && (
+                    <div className="flex flex-wrap gap-1 justify-center mt-1.5 pt-1.5 border-t border-gray-100">
+                      {unclassified.map(p => (
+                        <button
+                          key={p.uuid}
+                          title={p.label}
+                          onClick={() => onPlacementClick?.(p.uuid)}
+                          onMouseDown={stopProp}
+                          className="w-3.5 h-3.5 rounded-full shrink-0 opacity-40 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-gray-300 transition-shadow"
+                          style={{ backgroundColor: p.color }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          ))}
       </div>
     </div>
   );

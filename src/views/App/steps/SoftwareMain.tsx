@@ -1,16 +1,19 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
-import { ReactFlowProvider } from '@xyflow/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
 import { Toast } from '@heroui/react/toast';
 import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
 import { ManualOperation } from '../components/ManualOperation';
-import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
+import { useScenario, ROBOT_COLORS, type RobotTeam } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
 import { TerrainModal } from '../components/TerrainModal';
+import { DataCheckModal } from '../components/DataCheckModal';
+import { ExternalDataIntroModal } from '../components/ExternalDataIntroModal';
+import { FinalTestModal } from '../components/FinalTestModal';
 import { TimelinePanel } from '../components/TimelinePanel';
 import { DataTable } from '../components/DataTable';
 import { DecisionTree, type DecisionTreeHandle, type ValidationError } from '../components/DecisionTree';
-import { getStepDef, EMPTY_ROBOT_ENTRY, questionIdToCriterion } from './stepDefinitions';
+import { getStepDef, EMPTY_ROBOT_ENTRY, questionIdToCriterion, hasAllCriteria } from './stepDefinitions';
 import { CORE_PROFILES, QUESTION_SEQ_TYPE } from '../robotProfiles';
 
 const SEQ_TIMEOUT_MS = 10000;
@@ -37,6 +40,14 @@ type LocalStatus = ThymioStatus | 'connecting';
 
 type SensorData = { battery: number; mic: number; prox: number[]; seqType: number; light: number };
 const SENSOR_DEFAULTS: SensorData = { battery: 0, mic: 0, prox: [0, 0, 0, 0, 0], seqType: 0, light: 0 };
+
+type Flight = {
+  id: string;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  color: string;
+  onComplete: () => void;
+};
 
 function proxToDepth(p: number): number {
   if (p < 1000) {
@@ -66,12 +77,16 @@ export function SoftwareMain() {
     user,
     robotConfigs,
     robotTeams,
+    setRobotTeams,
     controledRobot,
     selectRobot,
     initializeRobot,
     stepIndex,
     physicalRobotData,
     setPhysicalRobotData,
+    setTreeAccuracy,
+    registerStopTesting,
+    externalDataset,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
   const showTree = stepDef.features.treeVisible;
@@ -84,11 +99,24 @@ export function SoftwareMain() {
   );
   const activeColor = robotConfigs.find(r => r.uuid === controledRobot)?.color;
   const thymioIcon = (activeColor && THYMIO_ICONS[activeColor]) ?? thymioDefault;
+  const algorithmDatasetCount = useMemo(
+    () =>
+      robotConfigs.filter(
+        r => hasAllCriteria(physicalRobotData[r.uuid]) && physicalRobotData[r.uuid]?.observation != null
+      ).length + externalDataset.length,
+    [robotConfigs, physicalRobotData, externalDataset]
+  );
   const [testing, setTesting] = useState(false);
+
+  // Let the scenario stop any in-progress robot test right before advancing to the next step.
+  useEffect(() => {
+    registerStopTesting(() => setTesting(false));
+    return () => registerStopTesting(null);
+  }, [registerStopTesting]);
+
   const [manualMode, setManualMode] = useState(false);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [teamModalOpen, setTeamModalOpen] = useState(false);
-  const [terrainModalOpen, setTerrainModalOpen] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, LocalStatus>>({});
   const [sensorData, setSensorData] = useState<SensorData>(SENSOR_DEFAULTS);
   const [validationErrors, setErrors] = useState<ValidationError[]>([]);
@@ -121,14 +149,18 @@ export function SoftwareMain() {
     physicalRobotDataRef.current = physicalRobotData;
   }, [physicalRobotData]);
 
-  // Auto-open the terrain modal the first time this step is reached.
+  // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau".
   const prevStepIndexRef = useRef(stepIndex);
   useEffect(() => {
-    if (stepDef.features.observationEntry && prevStepIndexRef.current !== stepIndex) {
-      setTerrainModalOpen(true);
+    if (stepIndex === 4 && prevStepIndexRef.current !== 4) {
+      const allBureau: Record<string, RobotTeam> = {};
+      robotConfigsRef.current.forEach(r => {
+        allBureau[r.uuid] = 'bureau';
+      });
+      setRobotTeams(allBureau);
     }
     prevStepIndexRef.current = stepIndex;
-  }, [stepIndex, stepDef.features.observationEntry]);
+  }, [stepIndex, setRobotTeams]);
 
   // Marks the currently-selected robot as tested once its test run reaches a tree leaf.
   const handleLeafReached = useCallback(() => {
@@ -143,7 +175,10 @@ export function SoftwareMain() {
     setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...entry, tested: true } });
   }, [setPhysicalRobotData]);
 
-  // Records the observed value for the criterion behind the currently-active question.
+  // Records the observed value for the criterion behind the currently-active question, and
+  // fires a small flying-dot animation from the tree to the corresponding data-table cell.
+  const treeAreaRef = useRef<HTMLDivElement>(null);
+  const [flights, setFlights] = useState<Flight[]>([]);
   const recordCriterionResult = useCallback(
     (value: number) => {
       const uuid = controledRobotRef.current;
@@ -151,11 +186,39 @@ export function SoftwareMain() {
       if (!uuid || !criterion) {
         return;
       }
-      const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
-      setPhysicalRobotData({
-        ...physicalRobotDataRef.current,
-        [uuid]: { ...entry, testResults: { ...entry.testResults, [criterion]: value } },
-      });
+
+      // Apply the update to context — deferred until the flight animation lands, if one starts.
+      const applyUpdate = () => {
+        const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+        setPhysicalRobotData({
+          ...physicalRobotDataRef.current,
+          [uuid]: {
+            ...entry,
+            testResults: { ...entry.testResults, [criterion]: value },
+            lockedCriteria: { ...entry.lockedCriteria, [criterion]: true },
+          },
+        });
+      };
+
+      const originEl = treeAreaRef.current;
+      const targetEl = document.querySelector(`[data-cell="${uuid}-${criterion}"]`);
+      if (originEl && targetEl) {
+        const originRect = originEl.getBoundingClientRect();
+        const targetRect = targetEl.getBoundingClientRect();
+        const color = ROBOT_COLORS.find(c => c.id === robotConfigsRef.current.find(r => r.uuid === uuid)?.color)?.hex;
+        setFlights(prev => [
+          ...prev,
+          {
+            id: `${uuid}-${criterion}-${Date.now()}`,
+            from: { x: originRect.left + originRect.width / 2 - 6, y: originRect.top + originRect.height / 2 - 6 },
+            to: { x: targetRect.left + targetRect.width / 2 - 6, y: targetRect.top + targetRect.height / 2 - 6 },
+            color: color ?? '#3b82f6',
+            onComplete: applyUpdate,
+          },
+        ]);
+      } else {
+        applyUpdate();
+      }
     },
     [setPhysicalRobotData]
   );
@@ -425,51 +488,59 @@ export function SoftwareMain() {
               <div className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1">
                 <img src={thymioIcon} alt="Robot :" className="h-10 mr-1 transition-all duration-300" />
 
-                <div className="flex gap-1.5 items-center">
-                  {controllableRobots.map(({ uuid, color }) => {
-                    const c = ROBOT_COLORS.find(x => x.id === color)!;
-                    const ds = displayState(statuses[uuid]);
-                    const isSelected = controledRobot === uuid && ds === 'ready';
-                    const locked = testing && activeQuestion !== null;
-
-                    return (
-                      <RobotDot
-                        key={uuid}
-                        hex={c.hex}
-                        label={c.label}
-                        displayState={ds}
-                        selected={isSelected}
-                        locked={locked}
-                        onClick={() => {
-                          if (ds !== 'ready' || locked) {
-                            return;
-                          }
-                          if (testing && !isSelected) {
-                            // At decision node: switch robot and exit test mode.
-                            setTesting(false);
-                            selectRobot(uuid);
-                          } else if (!testing) {
-                            selectRobot(uuid);
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                  {controllableRobots.length === 0 && <span className="text-xs text-gray-400">—</span>}
-                </div>
-
-                {showTree && !effectiveManualMode && (
+                {stepDef.features.algorithmMode ? (
+                  <span className="text-sm font-medium text-gray-600 px-1">
+                    {algorithmDatasetCount} robot{algorithmDatasetCount > 1 ? 's' : ''}
+                  </span>
+                ) : (
                   <>
-                    <div className="w-px h-4 bg-gray-200 mx-1" />
-                    <Button
-                      variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
-                      size="sm"
-                      isDisabled={!testing && !robotReady}
-                      onPress={handleLaunchTest}
-                      className={testing ? '!bg-red-500' : ''}
-                    >
-                      {testing ? '■ Arrêter' : '▶ Lancer le test'}
-                    </Button>
+                    <div className="flex gap-1.5 items-center">
+                      {controllableRobots.map(({ uuid, color }) => {
+                        const c = ROBOT_COLORS.find(x => x.id === color)!;
+                        const ds = displayState(statuses[uuid]);
+                        const isSelected = controledRobot === uuid && ds === 'ready';
+                        const locked = testing && activeQuestion !== null;
+
+                        return (
+                          <RobotDot
+                            key={uuid}
+                            hex={c.hex}
+                            label={c.label}
+                            displayState={ds}
+                            selected={isSelected}
+                            locked={locked}
+                            onClick={() => {
+                              if (ds !== 'ready' || locked) {
+                                return;
+                              }
+                              if (testing && !isSelected) {
+                                // At decision node: switch robot and exit test mode.
+                                setTesting(false);
+                                selectRobot(uuid);
+                              } else if (!testing) {
+                                selectRobot(uuid);
+                              }
+                            }}
+                          />
+                        );
+                      })}
+                      {controllableRobots.length === 0 && <span className="text-xs text-gray-400">—</span>}
+                    </div>
+
+                    {showTree && !effectiveManualMode && (
+                      <>
+                        <div className="w-px h-4 bg-gray-200 mx-1" />
+                        <Button
+                          variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
+                          size="sm"
+                          isDisabled={!testing && !robotReady}
+                          onPress={handleLaunchTest}
+                          className={testing ? '!bg-red-500' : ''}
+                        >
+                          {testing ? '■ Arrêter' : '▶ Lancer le test'}
+                        </Button>
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -493,7 +564,6 @@ export function SoftwareMain() {
                   <Button
                     variant="primary"
                     size="sm"
-                    isDisabled={testing}
                     onPress={() => {
                       setTesting(false);
                       setManualMode(true);
@@ -507,28 +577,12 @@ export function SoftwareMain() {
             </div>
 
             {/* Main content: tree or manual operation */}
-            <div className="flex-1 min-h-0 rounded-xl rounded-tl-none overflow-hidden border border-gray-100 bg-white">
-              {stepDef.features.observationEntry ? (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-4 p-8">
-                  <p className="text-gray-500 text-sm max-w-md text-center">
-                    Direction le terrain ! Note tes observations pour chaque robot testé.
-                  </p>
-                  <Button variant="primary" onPress={() => setTerrainModalOpen(true)}>
-                    Ouvrir les observations de terrain
-                  </Button>
-                  <ul className="flex flex-col gap-1.5 text-xs text-gray-400">
-                    {robotConfigs.map(r => {
-                      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
-                      const done = physicalRobotData[r.uuid]?.observation != null;
-                      return (
-                        <li key={r.uuid} className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: colorDef?.hex }} />
-                          {colorDef?.label} — {done ? 'observé' : 'à observer'}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+            <div
+              ref={treeAreaRef}
+              className="flex-1 min-h-0 rounded-xl rounded-tl-none overflow-hidden border border-gray-100 bg-white"
+            >
+              {stepDef.features.algorithmMode ? (
+                <DecisionTree mode="algorithm" />
               ) : !showTree && !showManual ? (
                 <div className="w-full h-full flex items-center justify-center">
                   <p className="text-gray-300 text-sm">Cette étape sera bientôt disponible</p>
@@ -543,16 +597,16 @@ export function SoftwareMain() {
                   radar={sensorData.prox.map(proxToDepth)}
                 />
               ) : (
-                <ReactFlowProvider>
-                  <DecisionTree
-                    ref={decisionTreeRef}
-                    testing={testing}
-                    editable={stepDef.features.treeEditable}
-                    onValidationChange={setErrors}
-                    onActiveQuestionChange={handleActiveQuestion}
-                    onLeafReached={handleLeafReached}
-                  />
-                </ReactFlowProvider>
+                <DecisionTree
+                  ref={decisionTreeRef}
+                  testing={testing}
+                  editable={stepDef.features.treeEditable}
+                  robotPlacement={stepDef.features.robotPlacementOnTree}
+                  onValidationChange={setErrors}
+                  onActiveQuestionChange={handleActiveQuestion}
+                  onLeafReached={handleLeafReached}
+                  onClassificationChange={setTreeAccuracy}
+                />
               )}
             </div>
           </div>
@@ -561,27 +615,47 @@ export function SoftwareMain() {
         {/* Right — Timeline + Data (1/3) */}
         <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0' }}>
           <div className="flex flex-col gap-3 p-6 border-b overflow-y-auto" style={{ flex: '1 1 0' }}>
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Parcours</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Journal de mission</h3>
             <TimelinePanel />
           </div>
 
-          <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '1 1 0' }}>
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Données</h3>
-            {stepDef.features.dataTable ? (
-              <DataTable />
-            ) : (
-              <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                <p className="text-gray-300 text-sm">À définir</p>
-              </div>
-            )}
-          </div>
+          {stepIndex > 1 && (
+            <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '1 1 0' }}>
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
+              {stepDef.features.dataTable ? (
+                <DataTable />
+              ) : (
+                <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                  <p className="text-gray-300 text-sm">À définir</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {stepDef.features.teamSwitch && <TeamModal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} />}
-      {stepDef.features.observationEntry && (
-        <TerrainModal isOpen={terrainModalOpen} onClose={() => setTerrainModalOpen(false)} />
-      )}
+      <TerrainModal />
+      <ExternalDataIntroModal />
+      <FinalTestModal />
+      <DataCheckModal />
+
+      <AnimatePresence>
+        {flights.map(f => (
+          <motion.div
+            key={f.id}
+            className="fixed w-3 h-3 rounded-full z-[100] pointer-events-none shadow"
+            style={{ backgroundColor: f.color }}
+            initial={{ left: f.from.x, top: f.from.y, opacity: 1, scale: 0.6 }}
+            animate={{ left: f.to.x, top: f.to.y, opacity: [1, 1, 0], scale: [0.6, 1.1, 0.4] }}
+            transition={{ duration: 0.8, ease: 'easeInOut' }}
+            onAnimationComplete={() => {
+              f.onComplete();
+              setFlights(prev => prev.filter(x => x.id !== f.id));
+            }}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
