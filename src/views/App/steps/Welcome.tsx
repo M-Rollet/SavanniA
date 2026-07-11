@@ -4,6 +4,7 @@ import { Button } from '@heroui/react';
 import { ArrowRight, ArrowLeft, Gear, CheckShape } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { MIN_ROBOTS } from '../robotProfiles';
+import { PHASES } from './stepDefinitions';
 
 import background from '../../../assets/welcome_back.jpg';
 import logo from '../../../assets/logo.svg';
@@ -11,7 +12,7 @@ import thymioLoop from '../../../assets/thymio_loop.png';
 
 const slide = { duration: 0.4, ease: 'easeInOut' as const };
 
-type BriefPage = { heading: string; body: string[]; list?: boolean };
+type BriefPage = { heading: string; body: string[]; list?: boolean; phases?: boolean };
 
 /** Mission-briefing pages shown between the title screen and step 1 — role, mission (foreshadowing
  * the 3-phase structure named later in TimelinePanel), then explicit learning objectives. */
@@ -27,8 +28,9 @@ const BRIEF_PAGES: BriefPage[] = [
     heading: 'Ta mission',
     body: [
       'Construis un programme capable de décider, tout seul, si un robot est « Prêt à partir » ou « À réparer ».',
-      'Le parcours se déroule en trois phases : Phase 1 · Labo (étudier les capteurs de chaque robot), Phase 2 · Terrain (les tester pour de vrai sur le circuit), Phase 3 · Bilan & optimisation (comparer, corriger, automatiser).',
+      'Le parcours se déroule en trois phases :',
     ],
+    phases: true,
   },
   {
     heading: 'Ce que tu vas apprendre',
@@ -139,6 +141,20 @@ export function Welcome() {
                       {line}
                     </p>
                   ))
+                )}
+
+                {BRIEF_PAGES[phase].phases && (
+                  <div className="flex flex-col gap-2">
+                    {PHASES.map(p => (
+                      <div key={p.id} className={`flex items-center gap-3 rounded-xl px-4 py-3 ${p.accentBgSoft}`}>
+                        <span className="text-2xl leading-none">{p.icon}</span>
+                        <div className="flex flex-col">
+                          <span className={`text-sm font-semibold ${p.accentText}`}>{p.label}</span>
+                          <span className="text-xs text-gray-500">{p.blurb}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 <div className="flex justify-between items-center">

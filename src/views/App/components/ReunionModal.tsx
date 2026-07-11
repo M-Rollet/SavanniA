@@ -139,17 +139,58 @@ export function ReunionModal() {
                   "L'arbre a vu juste partout cette fois — mais rien ne garantit qu'il tiendra face à de nouveaux robots."
                 ) : (
                   <>
-                    L'arbre du labo s'est trompé sur{' '}
+                    L'arbre du labo a mal classé{' '}
                     <span className="font-semibold text-red-600">
                       {labMistakes} robot{labMistakes > 1 ? 's' : ''}
                     </span>{' '}
-                    (lignes en rouge) : il jugeait « prêt » ce que le terrain a recalé, ou l'inverse. Le problème : il
-                    ignore une <span className="font-semibold">feature</span> — une caractéristique du robot, comme les
-                    phares ou la batterie (chaque colonne du tableau en est une). Il en oublie une qui aurait tout
-                    changé. À toi de trouver laquelle et de l'ajouter à l'arbre.
+                    (lignes en rouge) : il jugeait « prêt » ce que le terrain a recalé, ou l'inverse. Ses questions ne
+                    sont pas encore les bonnes. À toi de modifier ses conditions pour améliorer sa précision — à chaque
+                    changement, son score de robots bien classés évolue.
                   </>
                 )}
               </p>
+
+              <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Comment améliorer l'arbre
+                </span>
+                <p className="text-gray-600 text-sm">
+                  Une <span className="font-medium text-red-600">croix rouge</span> sur l'arbre = robot mal trié. Change
+                  les conditions de l'arbre et observe : à chaque modification, le score de robots bien classés se met à
+                  jour.
+                </p>
+                <ul className="flex flex-col gap-1.5 text-sm text-gray-600">
+                  <li className="flex gap-2">
+                    <span className="text-gray-400">›</span>
+                    <span>
+                      Clique sur une question pour tester une autre <span className="font-medium">feature</span>{' '}
+                      (changer sa condition).
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-gray-400">›</span>
+                    <span>
+                      <span className="font-medium">+ Question</span> sous une branche pour ajouter une condition.
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-gray-400">›</span>
+                    <span>
+                      <span className="font-medium">+ Décision</span> au bout d'une branche : « Prêt » ou « À réparer ».
+                    </span>
+                  </li>
+                  <li className="flex gap-2">
+                    <span className="text-gray-400">›</span>
+                    <span>
+                      La <span className="font-medium">croix ✕</span> en haut d'un bloc le supprime.
+                    </span>
+                  </li>
+                </ul>
+                <p className="text-gray-600 text-sm">
+                  Continue jusqu'à ce que tous les robots soient bien classés —{' '}
+                  <span className="font-medium text-green-600">tout vert</span>.
+                </p>
+              </div>
             </Modal.Body>
 
             <Modal.Footer>

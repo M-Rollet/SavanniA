@@ -231,7 +231,65 @@ export function isAlgoTreeComplete(tree: AlgoTree): boolean {
   return isAlgoTreeComplete(tree.yes) && isAlgoTreeComplete(tree.no);
 }
 
-export type TutorialItem = { id: string; text: string };
+/** Visual identity for each of the three mission phases — a colour + emoji that carries through
+ * the stepper, phase chip, and accents so a student always knows where they are at a glance. */
+export type Phase = {
+  id: 'labo' | 'terrain' | 'bilan';
+  label: string;
+  icon: string;
+  /** One-line description of the phase, shown in the mission-briefing overview. */
+  blurb: string;
+  steps: number[];
+  accentText: string;
+  accentBorder: string;
+  accentBg: string;
+  accentBgSoft: string;
+};
+
+export const PHASES: Phase[] = [
+  {
+    id: 'labo',
+    label: 'Phase 1 · Labo',
+    icon: '🔬',
+    blurb: 'Étudier les capteurs de chaque robot.',
+    steps: [1, 2],
+    accentText: 'text-blue-600',
+    accentBorder: 'border-blue-500',
+    accentBg: 'bg-blue-500',
+    accentBgSoft: 'bg-blue-50',
+  },
+  {
+    id: 'terrain',
+    label: 'Phase 2 · Terrain',
+    icon: '🌿',
+    blurb: 'Les tester pour de vrai sur le circuit.',
+    steps: [3],
+    accentText: 'text-emerald-600',
+    accentBorder: 'border-emerald-500',
+    accentBg: 'bg-emerald-500',
+    accentBgSoft: 'bg-emerald-50',
+  },
+  {
+    id: 'bilan',
+    label: 'Phase 3 · Bilan & optimisation',
+    icon: '📊',
+    blurb: 'Comparer, corriger, puis automatiser.',
+    steps: [4, 5, 6, 7],
+    accentText: 'text-amber-600',
+    accentBorder: 'border-amber-500',
+    accentBg: 'bg-amber-500',
+    accentBgSoft: 'bg-amber-50',
+  },
+];
+
+export function phaseForStep(index: number): Phase {
+  return PHASES.find(p => p.steps.includes(index)) ?? PHASES[0];
+}
+
+/** True for the first step of its phase — used to render the phase heading above it in the stepper. */
+export function isPhaseStart(index: number): boolean {
+  return PHASES.some(p => p.steps[0] === index);
+}
 
 export type StepFeatures = {
   /** Team switch modal (bureau/terrain) is available. */
@@ -271,7 +329,10 @@ export type StepDef = {
   shortLabel: string;
   features: StepFeatures;
   canAdvance: (ctx: CanAdvanceCtx) => boolean;
-  tutorial: TutorialItem[];
+  /** The pedagogical "why" — surfaced as a labelled line so it never gets buried in a paragraph. */
+  objective: string;
+  /** The single concrete thing to do now. */
+  action: string;
   /** Shown once as a pop-up when the step is first reached (see StepIntroModal). Steps whose
    * arrival is already announced by a dedicated modal (terrain, external data, final) skip it. */
   intro?: { heading: string; body: string[] };
@@ -298,12 +359,8 @@ export const STEP_DEFS: StepDef[] = [
     features: { ...NO_FEATURES, manualOp: true, dataTable: true, dataEditable: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.prediction != null),
-    tutorial: [
-      {
-        id: 'manual-intro',
-        text: 'Sélectionne un robot en haut à gauche et teste ses capteurs : phares, moteur, capteurs de distance (approche ta main), batterie. Note ce que tu observes en cliquant sur ce robot dans le tableau. Puis, dans la colonne « Pronostic », donne ton avis pour chaque robot : prêt à partir, ou à réparer ?',
-      },
-    ],
+    objective: "Découvrir l'état de chaque robot avant de décider.",
+    action: 'Teste les capteurs de chaque robot, note tes observations, puis donne ton pronostic dans le tableau.',
     intro: {
       heading: 'Phase 1 · Labo — Premières observations',
       body: [
@@ -323,12 +380,8 @@ export const STEP_DEFS: StepDef[] = [
       robotConfigs.every(
         ({ uuid }) => physicalRobotData[uuid]?.tested === true && hasAllCriteria(physicalRobotData[uuid])
       ),
-    tutorial: [
-      {
-        id: 'discovery-intro',
-        text: "Teste chaque robot dans l'arbre : il mesure ses capteurs et prédit son statut. Si une mesure corrige une de tes observations, la case est marquée d'un point orange. Compare le verdict de l'arbre avec ton pronostic — mais ce ne sont que des prédictions du labo : c'est le terrain qui tranchera.",
-      },
-    ],
+    objective: 'Voir comment un programme décide — et le comparer à ton pronostic.',
+    action: "Fais passer chaque robot dans l'arbre de décision.",
     // Arrival is announced by the dedicated DecisionTreeIntroModal (reflection + graphical
     // explanation of what a decision tree is), so no text intro here.
   },
@@ -339,7 +392,8 @@ export const STEP_DEFS: StepDef[] = [
     features: { ...NO_FEATURES, observationEntry: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.observation != null),
-    tutorial: [{ id: 'terrain-intro', text: 'Direction le terrain : observe chaque robot en conditions réelles.' }],
+    objective: 'Découvrir ce que valent vraiment tes prédictions.',
+    action: "Lance chaque robot sur le circuit et note s'il réussit.",
   },
   {
     index: 4,
@@ -356,13 +410,9 @@ export const STEP_DEFS: StepDef[] = [
     },
     canAdvance: ({ treeAccuracy }) =>
       treeAccuracy !== null && treeAccuracy.total > 0 && treeAccuracy.correct === treeAccuracy.total,
-    tutorial: [
-      {
-        id: 'refine-intro',
-        text: "L'arbre ignore une feature — une caractéristique du robot, une colonne du tableau — qui fait échouer certains robots sur le terrain. Trouve-la et ajoute-la, pour que chaque robot soit trié comme le terrain l'a montré.",
-      },
-    ],
-    // Arrival is announced by the dedicated ReunionModal (three-way bilan), so no text intro here.
+    objective: "Voir que changer les conditions de l'arbre change ses résultats.",
+    action: "Modifie les questions de l'arbre pour bien classer tous les robots.",
+    // Arrival + the how-to-edit instructions are in the dedicated ReunionModal (three-way bilan).
   },
   {
     index: 5,
@@ -378,9 +428,8 @@ export const STEP_DEFS: StepDef[] = [
       robotPlacementOnTree: true,
     },
     canAdvance: () => true,
-    tutorial: [
-      { id: 'external-intro', text: "Essaie de modifier l'arbre pour qu'il trie tous les robots correctement." },
-    ],
+    objective: 'Vérifier que ton arbre marche aussi sur des robots inconnus.',
+    action: "Ajuste l'arbre pour trier correctement les nouveaux robots.",
   },
   {
     index: 6,
@@ -388,12 +437,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Algorithme',
     features: { ...NO_FEATURES, algorithmMode: true, dataTable: true },
     canAdvance: ({ algorithmTree }) => algorithmTree !== null && isAlgoTreeComplete(algorithmTree),
-    tutorial: [
-      {
-        id: 'algo-intro',
-        text: 'Teste toutes les questions possibles et garde celle qui fait le moins d’erreurs — c’est la règle que l’algorithme applique à chaque étape.',
-      },
-    ],
+    objective: 'Trouver une méthode automatique pour construire l’arbre.',
+    action: 'À chaque étape, garde la question qui fait le moins d’erreurs.',
     intro: {
       heading: 'Construire l’algorithme',
       body: [
@@ -408,7 +453,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Final',
     features: { ...NO_FEATURES },
     canAdvance: () => false,
-    tutorial: [{ id: 'final-intro', text: 'Vérifie que ton IA choisit les bons robots pour la mission.' }],
+    objective: 'Prouver que ton IA fonctionne.',
+    action: 'Vérifie qu’elle choisit les bons robots pour la mission.',
   },
 ];
 
