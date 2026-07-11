@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Pencil } from '@gravity-ui/icons';
+import { Pencil, CheckShape, Ban } from '@gravity-ui/icons';
 import { ROBOT_COLORS, useScenario } from '../ScenarioContext';
-import type { Criterion, RobotEntry } from '../steps/stepDefinitions';
+import { EMPTY_ROBOT_ENTRY, type Criterion, type RobotEntry } from '../steps/stepDefinitions';
 import { getWrongCriteria } from '../robotProfiles';
 import { EditRobotModal } from './EditRobotModal';
+import './TreeNodes.css';
 
 const CRITERIA: Criterion[] = ['light_working', 'ir_working', 'motor_noise', 'battery_level'];
 
@@ -43,10 +44,27 @@ type Row = {
 };
 
 export function DataTable() {
-  const { stepIndex, robotConfigs, physicalRobotData, externalDataset, dataCheckFailed } = useScenario();
+  const {
+    stepIndex,
+    robotConfigs,
+    physicalRobotData,
+    setPhysicalRobotData,
+    externalDataset,
+    dataCheckFailed,
+    correctedCriteria,
+  } = useScenario();
   const [editingUuid, setEditingUuid] = useState<string | null>(null);
 
-  const showResult = stepIndex !== 2;
+  // Terrain result column only appears once terrain observations exist (step 3 onward).
+  const showResult = stepIndex >= 3;
+  // The student's own GO/STAY commitment (PRIMM Predict): filled inline here in step 1 (their guess
+  // from observation), then shown read-only in step 2 beside the tree's verdict so agreement or
+  // disagreement is visible the moment a robot lands on a leaf.
+  const showPrediction = stepIndex === 1 || stepIndex === 2;
+  const canEditPrediction = stepIndex === 1;
+  // In the bilan phase (step 4) the frozen lab verdict stays visible next to the terrain result,
+  // so the student can see which robots the tree misjudged while they fix it.
+  const showLabVerdict = stepIndex === 4;
   const wrongCells = useMemo(
     () => (dataCheckFailed ? getWrongCriteria(robotConfigs, physicalRobotData) : null),
     [dataCheckFailed, robotConfigs, physicalRobotData]
@@ -77,6 +95,11 @@ export function DataTable() {
 
   const editingLabel = rows.find(r => r.uuid === editingUuid)?.label ?? '';
 
+  const setPrediction = (uuid: string, prediction: 'ready' | 'repair') => {
+    const entry = physicalRobotData[uuid] ?? EMPTY_ROBOT_ENTRY;
+    setPhysicalRobotData({ ...physicalRobotData, [uuid]: { ...entry, prediction } });
+  };
+
   if (rows.length === 0) {
     return <p className="text-gray-300 text-sm">Aucun robot configuré</p>;
   }
@@ -99,8 +122,16 @@ export function DataTable() {
                 ))}
               </th>
             ))}
+            {showPrediction && (
+              <th className="text-left font-medium text-gray-400 px-2 py-2 border border-gray-200">Pronostic</th>
+            )}
+            {showLabVerdict && (
+              <th className="text-left font-medium text-gray-400 px-2 py-2 border border-gray-200">Labo</th>
+            )}
             {showResult && (
-              <th className="text-left font-medium text-gray-400 px-2 py-2 border border-gray-200">Résultat attendu</th>
+              <th className="text-left font-medium text-gray-400 px-2 py-2 border border-gray-200">
+                {showLabVerdict ? 'Terrain' : 'Résultat attendu'}
+              </th>
             )}
             <th className="w-8 border border-gray-200" />
           </tr>
@@ -128,14 +159,27 @@ export function DataTable() {
               {CRITERIA.map(c => {
                 const value = row.entry?.testResults[c];
                 const isWrong = !!row.uuid && wrongCells?.has(`${row.uuid}-${c}`);
+                const priorManualValue = row.uuid ? correctedCriteria[`${row.uuid}-${c}`] : undefined;
+                const isCorrected = priorManualValue !== undefined;
                 return (
                   <td
                     key={c}
                     data-cell={row.uuid ? `${row.uuid}-${c}` : undefined}
-                    className={`px-2 py-2 text-gray-600 border overflow-hidden ${
-                      isWrong ? 'bg-yellow-100 border-yellow-300' : 'border-gray-100'
+                    title={
+                      isCorrected
+                        ? `Tu avais noté « ${formatValue(c, priorManualValue)} », le test mesure « ${formatValue(
+                            c,
+                            value
+                          )} ».`
+                        : undefined
+                    }
+                    className={`relative px-2 py-2 text-gray-600 border overflow-hidden ${
+                      isWrong ? 'bg-yellow-100 border-yellow-300' : isCorrected ? 'border-amber-300' : 'border-gray-100'
                     }`}
                   >
+                    {isCorrected && (
+                      <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    )}
                     <motion.span
                       key={value ?? 'empty'}
                       initial={{ opacity: 0, scale: 0.5 }}
@@ -148,11 +192,57 @@ export function DataTable() {
                   </td>
                 );
               })}
-              {showResult && (
-                <td className="px-2 py-2 text-gray-600 border border-gray-100">
-                  {formatResult(row.entry?.observation?.category)}
+              {showPrediction && (
+                <td className="px-1 py-1.5 border border-gray-100">
+                  {row.uuid && canEditPrediction ? (
+                    <div className="node flex gap-1" onClick={e => e.stopPropagation()}>
+                      <button
+                        data-value="true"
+                        data-selected={row.entry?.prediction === 'ready' || undefined}
+                        onClick={() => setPrediction(row.uuid!, 'ready')}
+                        title="Prêt à partir"
+                        className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all"
+                      >
+                        <CheckShape width={12} height={12} />
+                      </button>
+                      <button
+                        data-value="false"
+                        data-selected={row.entry?.prediction === 'repair' || undefined}
+                        onClick={() => setPrediction(row.uuid!, 'repair')}
+                        title="À réparer"
+                        className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all"
+                      >
+                        <Ban width={12} height={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="px-1 text-gray-600">{formatResult(row.entry?.prediction ?? undefined)}</span>
+                  )}
                 </td>
               )}
+              {(() => {
+                const lab = row.entry?.labVerdict ?? null;
+                const terrain = row.entry?.observation?.category ?? null;
+                const labWrong = showLabVerdict && lab != null && terrain != null && lab !== terrain;
+                return (
+                  <>
+                    {showLabVerdict && (
+                      <td
+                        className={`px-2 py-2 border border-gray-100 ${
+                          labWrong ? 'bg-red-50 text-red-600 font-medium' : 'text-gray-600'
+                        }`}
+                      >
+                        {formatResult(lab ?? undefined)}
+                      </td>
+                    )}
+                    {showResult && (
+                      <td className="px-2 py-2 text-gray-600 border border-gray-100">
+                        {formatResult(row.entry?.observation?.category)}
+                      </td>
+                    )}
+                  </>
+                );
+              })()}
               <td className="px-2 py-2 border border-gray-100">
                 {row.uuid && (
                   <button

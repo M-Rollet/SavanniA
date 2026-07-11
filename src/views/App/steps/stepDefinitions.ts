@@ -11,6 +11,15 @@ export type RobotEntry = {
   /** True once the robot has been run through the decision tree down to a leaf. */
   tested: boolean;
   observation: { category: 'ready' | 'repair'; notes: string } | null;
+  /** Student's own GO/STAY commitment, made from their step-1 manual observations before the
+   * tree announces its verdict (PRIMM's Predict). Optional: entries saved before this field
+   * existed won't have it. */
+  prediction?: 'ready' | 'repair' | null;
+  /** The decision tree's verdict for this robot, captured the first time it reaches a leaf in
+   * step 2 (PRIMM's Run). Frozen at the initial tree, so the step-3 reunion can compare what the
+   * lab predicted against what the terrain actually showed. Optional for the same back-compat
+   * reason as `prediction`. */
+  labVerdict?: 'ready' | 'repair' | null;
 };
 
 export const EMPTY_ROBOT_ENTRY: RobotEntry = {
@@ -18,6 +27,8 @@ export const EMPTY_ROBOT_ENTRY: RobotEntry = {
   lockedCriteria: {},
   tested: false,
   observation: null,
+  prediction: null,
+  labVerdict: null,
 };
 
 /** True once every criterion has a recorded value, regardless of source. */
@@ -261,6 +272,9 @@ export type StepDef = {
   features: StepFeatures;
   canAdvance: (ctx: CanAdvanceCtx) => boolean;
   tutorial: TutorialItem[];
+  /** Shown once as a pop-up when the step is first reached (see StepIntroModal). Steps whose
+   * arrival is already announced by a dedicated modal (terrain, external data, final) skip it. */
+  intro?: { heading: string; body: string[] };
 };
 
 const NO_FEATURES: StepFeatures = {
@@ -279,21 +293,30 @@ const NO_FEATURES: StepFeatures = {
 export const STEP_DEFS: StepDef[] = [
   {
     index: 1,
-    label: 'Opération manuelle',
-    shortLabel: 'Manuel',
+    label: 'Premières observations',
+    shortLabel: 'Observations',
     features: { ...NO_FEATURES, manualOp: true, dataTable: true, dataEditable: true },
-    canAdvance: () => true,
+    canAdvance: ({ physicalRobotData, robotConfigs }) =>
+      robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.prediction != null),
     tutorial: [
       {
         id: 'manual-intro',
-        text: "Voici l'interface de contrôle manuel. Sélectionne un robot et teste les fonctionnalités. Tu peux remplir tes observations dans le tableau ci-dessous.",
+        text: 'Sélectionne un robot en haut à gauche et teste ses capteurs : phares, moteur, capteurs de distance (approche ta main), batterie. Note ce que tu observes en cliquant sur ce robot dans le tableau. Puis, dans la colonne « Pronostic », donne ton avis pour chaque robot : prêt à partir, ou à réparer ?',
       },
     ],
+    intro: {
+      heading: 'Phase 1 · Labo — Premières observations',
+      body: [
+        "Avant d'envoyer un robot dans la savane, un scientifique commence par examiner son matériel lui-même. Allume les phares, fais tourner les moteurs, approche ta main des capteurs, vérifie la batterie.",
+        "Note ce que tu observes dans le tableau, robot par robot. Ce sont tes premières impressions — elles ne sont pas encore vérifiées, et c'est normal.",
+        "Puis, dans la colonne « Pronostic », engage-toi pour chaque robot : d'après ce que tu as vu, est-il prêt à partir ou à réparer ? Ce n'est pas grave de se tromper — on vérifiera ensuite.",
+      ],
+    },
   },
   {
     index: 2,
-    label: 'Arbre de décision',
-    shortLabel: 'Découverte',
+    label: 'Prédiction du labo',
+    shortLabel: 'Prédiction',
     features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true, dataEditable: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 &&
@@ -303,9 +326,11 @@ export const STEP_DEFS: StepDef[] = [
     tutorial: [
       {
         id: 'discovery-intro',
-        text: "Voici le programme de tri des robots. Il s'agit d'un arbre de décision avec plusieurs questions. Sélectionne chaque robot et regarde comment cela fonctionne. Après avoir tout testé et complété toutes les observations, tu pourras passer à la suite.",
+        text: "Teste chaque robot dans l'arbre : il mesure ses capteurs et prédit son statut. Si une mesure corrige une de tes observations, la case est marquée d'un point orange. Compare le verdict de l'arbre avec ton pronostic — mais ce ne sont que des prédictions du labo : c'est le terrain qui tranchera.",
       },
     ],
+    // Arrival is announced by the dedicated DecisionTreeIntroModal (reflection + graphical
+    // explanation of what a decision tree is), so no text intro here.
   },
   {
     index: 3,
@@ -334,9 +359,10 @@ export const STEP_DEFS: StepDef[] = [
     tutorial: [
       {
         id: 'refine-intro',
-        text: "Certaines observations sur le terrain ne correspondent pas aux résultats de l'arbre de décision. Modifie le pour que les robots soient correctement triés.",
+        text: "L'arbre ignore une feature — une caractéristique du robot, une colonne du tableau — qui fait échouer certains robots sur le terrain. Trouve-la et ajoute-la, pour que chaque robot soit trié comme le terrain l'a montré.",
       },
     ],
+    // Arrival is announced by the dedicated ReunionModal (three-way bilan), so no text intro here.
   },
   {
     index: 5,
@@ -365,9 +391,16 @@ export const STEP_DEFS: StepDef[] = [
     tutorial: [
       {
         id: 'algo-intro',
-        text: "Il est difficile de contruire l'arbre de décision à la main. Nous allons essayer de trouver une méthode pour le faire ! Teste toutes les questions possible et choisis celle qui te semble la plus pertinente.",
+        text: 'Teste toutes les questions possibles et garde celle qui fait le moins d’erreurs — c’est la règle que l’algorithme applique à chaque étape.',
       },
     ],
+    intro: {
+      heading: 'Construire l’algorithme',
+      body: [
+        "Avec 6 robots, trier à la main reste possible. Mais l'autre équipe vient d'en envoyer 30 de plus — impossible de continuer au feeling.",
+        'Il nous faut une méthode automatique qui marche à chaque fois, quel que soit le nombre de robots : à chaque étape, tester toutes les questions possibles et garder celle qui fait le moins d’erreurs. À toi de la découvrir.',
+      ],
+    },
   },
   {
     index: 7,

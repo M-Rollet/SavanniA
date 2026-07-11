@@ -71,6 +71,11 @@ type ScenarioState = {
   /** True once step 3's end-of-step check has found terrain observations that don't match the ground truth. */
   observationCheckFailed: boolean;
   setObservationCheckFailed: (failed: boolean) => void;
+  /** Cells (`${uuid}-${criterion}`) whose manually-entered value was overwritten by a tree test
+   * that measured something different — mapped to the earlier manual value, for the DataTable
+   * marker's tooltip. Never cleared automatically: it's a running record for the session. */
+  correctedCriteria: Record<string, number>;
+  setCorrectedCriteria: (data: Record<string, number>) => void;
   /** Lets SoftwareMain register a callback that stops any in-progress robot test; called before every step advance. */
   registerStopTesting: (fn: (() => void) | null) => void;
   resetApp: () => void;
@@ -97,6 +102,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [treeAccuracy, setTreeAccuracy] = useState<TreeAccuracy | null>(null);
   const [dataCheckFailed, setDataCheckFailed] = useState(false);
   const [observationCheckFailed, setObservationCheckFailed] = useState(false);
+  const [correctedCriteria, setCorrectedCriteria] = useState<Record<string, number>>({});
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Only ever relevant on step 2 — clear it once the user leaves that step.
@@ -206,6 +212,11 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(() => {
     clearSavedTree();
+    // Owned by StepIntroModal / ReunionModal's useLocalStorage; safe to clear here because resetting
+    // to the welcome screen unmounts SoftwareMain, so the modals re-read storage on next mount.
+    localStorage.removeItem('scenario:introSeen');
+    localStorage.removeItem('scenario:reunionSeen');
+    localStorage.removeItem('scenario:dtIntroSeen');
     setStepIndex(0);
     setControledRobot('');
     setRobotConfigs([]);
@@ -214,6 +225,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setExternalDataset([]);
     setAlgorithmTree(null);
     setTreeAccuracy(null);
+    setCorrectedCriteria({});
   }, [setStepIndex, setControledRobot, setRobotConfigs, setRobotTeams, setPhysicalRobotData, setExternalDataset]);
 
   const openSettings = useCallback(() => setIsSettingsOpen(true), []);
@@ -247,6 +259,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setDataCheckFailed,
       observationCheckFailed,
       setObservationCheckFailed,
+      correctedCriteria,
+      setCorrectedCriteria,
       registerStopTesting,
       resetApp,
       isSettingsOpen,
@@ -276,6 +290,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setDataCheckFailed,
       observationCheckFailed,
       setObservationCheckFailed,
+      correctedCriteria,
+      setCorrectedCriteria,
       registerStopTesting,
       resetApp,
       isSettingsOpen,

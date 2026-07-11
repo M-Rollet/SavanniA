@@ -114,14 +114,14 @@ function ArcGauge({ cx, cy, diameter, w, h, value }: ArcGaugeProps) {
 // 5 slices × 3 rings within [RADAR_START, RADAR_START + RADAR_SWEEP].
 // Each ring-slice is a thick arc stroke with rounded caps → natural rounded corners.
 // value ∈ {0,1,2,3}: 0=none, 1=all 3 rings, 2=outer 2, 3=outermost only.
-const RADAR_HUB = 240;      // inner radius (PNG px)
-const RADAR_OUTER = 330;    // outer radius (PNG px)
+const RADAR_HUB = 240; // inner radius (PNG px)
+const RADAR_OUTER = 330; // outer radius (PNG px)
 const RADAR_SLICES = 5;
 const RADAR_RINGS = 3;
-const SLICE_GAP = 8;        // angular gap between slices (degrees)
-const DEPTH_GAP = 10;        // radial gap between rings (PNG px)
-const RADAR_START = -45;    // start angle (degrees, SVG math)
-const RADAR_SWEEP = 90;    // total angular span (degrees)
+const SLICE_GAP = 8; // angular gap between slices (degrees)
+const DEPTH_GAP = 10; // radial gap between rings (PNG px)
+const RADAR_START = -45; // start angle (degrees, SVG math)
+const RADAR_SWEEP = 90; // total angular span (degrees)
 
 type RadarGaugeProps = { cx: number; cy: number; w: number; h: number; values: number[] };
 
@@ -144,14 +144,20 @@ function RadarGauge({ cx, cy, w, h, values }: RadarGaugeProps) {
         transform: 'translate(-50%, -50%)',
       }}
     >
+      <span
+        className="absolute left-1/2 text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-emerald-800"
+        style={{ top: -18, transform: 'translateX(-50%)' }}
+      >
+        Capteurs distance
+      </span>
       <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full">
         {values.map((value, i) => {
           const start = RADAR_START + i * slotAngle + SLICE_GAP / 2;
-          const end   = start + sliceSpan;
+          const end = start + sliceSpan;
           return Array.from({ length: RADAR_RINGS }, (_, ri) => {
-            const ring = ri + 1;               // 1=innermost, 3=outermost
+            const ring = ri + 1; // 1=innermost, 3=outermost
             const rMid = RADAR_HUB + (ri + 0.5) * ringWidth;
-            const sw   = ringWidth - DEPTH_GAP;
+            const sw = ringWidth - DEPTH_GAP;
             const filled = value > 0 && ring >= value;
             return (
               <path
@@ -181,7 +187,7 @@ type Props = {
   disabled?: boolean;
 };
 
-export function ManualOperation({ level = 0.0, arc = 0.0, radar = [0,0,0,0,0], onEmitEvent, disabled }: Props) {
+export function ManualOperation({ level = 0.0, arc = 0.0, radar = [0, 0, 0, 0, 0], onEmitEvent, disabled }: Props) {
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [lightActive, setLightActive] = useState(false);
 
@@ -220,19 +226,52 @@ export function ManualOperation({ level = 0.0, arc = 0.0, radar = [0,0,0,0,0], o
             <RadarGauge cx={625} cy={639} {...size} values={radar} />
 
             <Pin cx={375} cy={360} {...size}>
-              <Button isIconOnly size="sm" variant={lightActive ? 'primary' : 'tertiary'} isDisabled={disabled} onPress={handleLight}>
-                <Bulb />
-              </Button>
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant={lightActive ? 'primary' : 'tertiary'}
+                  isDisabled={disabled}
+                  onPress={handleLight}
+                >
+                  <Bulb />
+                </Button>
+                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-gray-500">
+                  Phares
+                </span>
+              </div>
             </Pin>
             <Pin cx={686} cy={360} {...size}>
-              <Button isIconOnly size="sm" variant="tertiary" isDisabled={disabled} onPress={() => onEmitEvent?.('go_backward')}>
-                <ArrowRotateLeft />
-              </Button>
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="tertiary"
+                  isDisabled={disabled}
+                  onPress={() => onEmitEvent?.('go_backward')}
+                >
+                  <ArrowRotateLeft />
+                </Button>
+                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-gray-500">
+                  Reculer
+                </span>
+              </div>
             </Pin>
             <Pin cx={789} cy={360} {...size}>
-              <Button isIconOnly size="sm" variant="tertiary" isDisabled={disabled} onPress={() => onEmitEvent?.('go_forward')}>
-                <ArrowRotateRight />
-              </Button>
+              <div className="flex flex-col items-center gap-1">
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="tertiary"
+                  isDisabled={disabled}
+                  onPress={() => onEmitEvent?.('go_forward')}
+                >
+                  <ArrowRotateRight />
+                </Button>
+                <span className="text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap text-gray-500">
+                  Avancer
+                </span>
+              </div>
             </Pin>
           </>
         )}

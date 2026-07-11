@@ -546,8 +546,9 @@ type ManualTreeProps = {
   editable?: boolean;
   onValidationChange?: (errors: ValidationError[]) => void;
   onActiveQuestionChange?: (questionId: string | null) => void;
-  /** Fired once when the active test path reaches a leaf node. */
-  onLeafReached?: (nodeId: string) => void;
+  /** Fired once when the active test path reaches a leaf node, with that leaf's decision
+   * (true = ready, false = repair, null = undecided). */
+  onLeafReached?: (nodeId: string, decision: boolean | null) => void;
   /** Show which tested robots land on which leaf, and whether that matches their terrain observation. */
   robotPlacement?: boolean;
   /** Reports how many tested+observed robots the current tree classifies correctly, whenever it changes. */
@@ -832,7 +833,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     const cy = node.position.y + getNodeHeight(node.type) / 2;
     setCenter(cx, cy, { zoom: FOCUS_ZOOM, duration: PAN_DURATION });
     if (node.type === 'leaf') {
-      onLeafReachedRef.current?.(node.id);
+      onLeafReachedRef.current?.(node.id, (node.data.decision as boolean | null) ?? null);
     }
   }, [frontierNodeId, setCenter]);
 

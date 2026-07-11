@@ -6,6 +6,9 @@ import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
 import { ManualOperation } from '../components/ManualOperation';
 import { useScenario, ROBOT_COLORS, type RobotTeam } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
+import { StepIntroModal } from '../components/StepIntroModal';
+import { ReunionModal } from '../components/ReunionModal';
+import { DecisionTreeIntroModal } from '../components/DecisionTreeIntroModal';
 import { TerrainModal } from '../components/TerrainModal';
 import { DataCheckModal } from '../components/DataCheckModal';
 import { ExternalDataIntroModal } from '../components/ExternalDataIntroModal';
@@ -87,6 +90,8 @@ export function SoftwareMain() {
     setTreeAccuracy,
     registerStopTesting,
     externalDataset,
+    correctedCriteria,
+    setCorrectedCriteria,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
   const showTree = stepDef.features.treeVisible;
@@ -162,18 +167,25 @@ export function SoftwareMain() {
     prevStepIndexRef.current = stepIndex;
   }, [stepIndex, setRobotTeams]);
 
-  // Marks the currently-selected robot as tested once its test run reaches a tree leaf.
-  const handleLeafReached = useCallback(() => {
-    const uuid = controledRobotRef.current;
-    if (!uuid) {
-      return;
-    }
-    const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
-    if (entry.tested) {
-      return;
-    }
-    setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...entry, tested: true } });
-  }, [setPhysicalRobotData]);
+  // Marks the currently-selected robot as tested once its test run reaches a tree leaf, and
+  // freezes the tree's verdict there. The `tested` guard means this only fires on the very first
+  // leaf (step 2's initial tree), so labVerdict stays the lab's original prediction even after
+  // the tree is edited in step 4 — that frozen value is what the step-3 reunion compares against.
+  const handleLeafReached = useCallback(
+    (_nodeId: string, decision: boolean | null) => {
+      const uuid = controledRobotRef.current;
+      if (!uuid) {
+        return;
+      }
+      const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+      if (entry.tested) {
+        return;
+      }
+      const labVerdict = decision === null ? null : decision ? 'ready' : 'repair';
+      setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...entry, tested: true, labVerdict } });
+    },
+    [setPhysicalRobotData]
+  );
 
   // Records the observed value for the criterion behind the currently-active question, and
   // fires a small flying-dot animation from the tree to the corresponding data-table cell.
@@ -190,6 +202,13 @@ export function SoftwareMain() {
       // Apply the update to context — deferred until the flight animation lands, if one starts.
       const applyUpdate = () => {
         const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+        const priorManualValue = entry.testResults[criterion];
+        // A prior, still-unlocked value came from the student's own manual entry (step 1) — if
+        // the tree's real test measures something else, that's not noise, it's the whole point:
+        // flag it so the DataTable can mark the cell instead of silently overwriting it.
+        if (!entry.lockedCriteria[criterion] && priorManualValue !== undefined && priorManualValue !== value) {
+          setCorrectedCriteria({ ...correctedCriteria, [`${uuid}-${criterion}`]: priorManualValue });
+        }
         setPhysicalRobotData({
           ...physicalRobotDataRef.current,
           [uuid]: {
@@ -220,7 +239,7 @@ export function SoftwareMain() {
         applyUpdate();
       }
     },
-    [setPhysicalRobotData]
+    [setPhysicalRobotData, correctedCriteria, setCorrectedCriteria]
   );
 
   // Convert a raw seq_done value to a tree answer for the active question.
@@ -623,6 +642,11 @@ export function SoftwareMain() {
 
           <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '2 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
+            {stepIndex === 1 && (
+              <p className="text-xs text-gray-400 -mt-1 shrink-0">
+                Clique sur un robot pour noter ce que tu observes, puis donne ton pronostic dans la colonne dédiée.
+              </p>
+            )}
             {stepDef.features.dataTable ? (
               <DataTable />
             ) : (
@@ -635,6 +659,9 @@ export function SoftwareMain() {
       </div>
 
       {stepDef.features.teamSwitch && <TeamModal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} />}
+      <StepIntroModal />
+      <DecisionTreeIntroModal />
+      <ReunionModal />
       <TerrainModal />
       <ExternalDataIntroModal />
       <FinalTestModal />

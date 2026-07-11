@@ -65,6 +65,32 @@ export const CORE_PROFILES: Profile[] = CORE_PROFILE_DEFS.map(p => ({
   expectedCategory: categorizeConfig(p.config),
 }));
 
+/** Plain-language, sensor-specific reason a config fails a given check — ties the terrain
+ * consequence back to the exact sensor a student can see in the lab data. */
+const FAILURE_HINTS = {
+  light_working: "ses phares ne s'allument pas — dans le tunnel, il ne verra rien venir.",
+  ir_working: 'son capteur de distance ne répond pas — il ne détectera ni obstacles ni passages à faune.',
+  motor_noise: 'son moteur fait un bruit inhabituel — sur la pente, il risque de caler.',
+  battery_level: "sa batterie est trop faible — il n'ira pas bien loin.",
+} as const;
+
+/** Returns the sensor-specific reasons a robot's ground-truth config counts as 'repair' (empty if 'ready'). */
+export function getFailureReasons(cfg: ColorConfig): string[] {
+  const reasons: string[] = [];
+  if (cfg.light_working !== 1) {
+    reasons.push(FAILURE_HINTS.light_working);
+  }
+  if (cfg.ir_working !== 1) {
+    reasons.push(FAILURE_HINTS.ir_working);
+  }
+  if (cfg.battery_level === 0) {
+    reasons.push(FAILURE_HINTS.battery_level);
+  } else if (cfg.motor_noise === 1 && cfg.battery_level <= 1) {
+    reasons.push(FAILURE_HINTS.motor_noise);
+  }
+  return reasons;
+}
+
 /** Maps a question ID to the event name emitted to the robot to trigger its test sequence. */
 export const QUESTION_SEQ_TYPE: Partial<Record<string, string>> = {
   light_working: 'test_light',

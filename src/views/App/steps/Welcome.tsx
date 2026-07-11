@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
-import { ArrowRight, Gear } from '@gravity-ui/icons';
+import { ArrowRight, ArrowLeft, Gear, CheckShape } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { MIN_ROBOTS } from '../robotProfiles';
 
@@ -11,10 +11,40 @@ import thymioLoop from '../../../assets/thymio_loop.png';
 
 const slide = { duration: 0.4, ease: 'easeInOut' as const };
 
+type BriefPage = { heading: string; body: string[]; list?: boolean };
+
+/** Mission-briefing pages shown between the title screen and step 1 — role, mission (foreshadowing
+ * the 3-phase structure named later in TimelinePanel), then explicit learning objectives. */
+const BRIEF_PAGES: BriefPage[] = [
+  {
+    heading: 'Ton rôle',
+    body: [
+      'Bienvenue au laboratoire de SavannIA. Tu es scientifique : ton équipe envoie des robots explorer la savane pour observer la faune, sans jamais la déranger ni perdre de matériel sur le terrain.',
+      'Mais certains robots ne sont pas prêts — batterie faible, capteurs cassés, moteur qui peine. Les envoyer en mission serait risqué, pour eux comme pour les animaux.',
+    ],
+  },
+  {
+    heading: 'Ta mission',
+    body: [
+      'Construis un programme capable de décider, tout seul, si un robot est « Prêt à partir » ou « À réparer ».',
+      'Le parcours se déroule en trois phases : Phase 1 · Labo (étudier les capteurs de chaque robot), Phase 2 · Terrain (les tester pour de vrai sur le circuit), Phase 3 · Bilan & optimisation (comparer, corriger, automatiser).',
+    ],
+  },
+  {
+    heading: 'Ce que tu vas apprendre',
+    body: [
+      "Ce qu'est vraiment une intelligence artificielle : des règles, pas de la magie.",
+      "Comment fonctionne un arbre de décision : des questions posées dans le bon ordre, jusqu'au verdict.",
+      'Pourquoi il faut parfois se méfier de ses propres observations face à une mesure précise.',
+    ],
+    list: true,
+  },
+];
+
 export function Welcome() {
   const { goToStep, robotConfigs } = useScenario();
   const isConfigured = robotConfigs.length >= MIN_ROBOTS;
-  const [phase, setPhase] = useState<'main' | 'intro'>('main');
+  const [phase, setPhase] = useState<'main' | number>('main');
 
   return (
     <div className="relative w-screen h-screen overflow-hidden">
@@ -59,7 +89,7 @@ export function Welcome() {
                 Crée une intelligence artificielle capable de choisir <br />
                 les meilleurs robots pour partir en mission.
               </p>
-              <Button variant="primary" size="lg" onClick={() => setPhase('intro')} isDisabled={!isConfigured}>
+              <Button variant="primary" size="lg" onClick={() => setPhase(0)} isDisabled={!isConfigured}>
                 Commencer la mission
                 <ArrowRight />
               </Button>
@@ -72,30 +102,61 @@ export function Welcome() {
             </motion.div>
           )}
 
-          {phase === 'intro' && (
+          {typeof phase === 'number' && (
             <motion.div
-              key="intro"
+              key={`brief-${phase}`}
               initial={{ opacity: 0, x: 120 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -120 }}
               transition={slide}
             >
               <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-8 flex flex-col gap-6">
-                <h3 className="text-xl font-semibold">Votre mission</h3>
-                <p className="text-gray-600">
-                  Bienvenue dans la laboratoire de SavannIA. Vous travaillez comme scientifique dans la savanne et devez envoyer des robots en mission d'exploration, pour parcourir le terrain et repérer les environs. Mais attention, certains robots sont défectueux et n'arriveront pas à accomplir la mission !
-                </p>
-                <p className="text-gray-600">
-                  L'équipe de scientifiques n'a pas le temps de tester et inspecter tous les robots avant chaque mission et il est hors de question de laisser des robots défectueux dans la nature. Votre objectif est donc de créer une intelligence artificielle capable de trier les robots avant leur départ et d'envoyer en réparation ceux qui en ont besoin.
-                </p>
-                <p className="text-gray-600">
-                  Vous allez découvrir les robots, observer leur comportement sur le terrain et contruire une IA capable de les trier...
-                </p>
-                <div className="flex justify-end">
-                  <Button variant="primary" onClick={() => goToStep(1)}>
-                    C'est parti
-                    <ArrowRight />
+                <div className="flex items-center gap-2">
+                  {BRIEF_PAGES.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        i === phase ? 'bg-gray-800' : 'bg-gray-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <h3 className="text-xl font-semibold">{BRIEF_PAGES[phase].heading}</h3>
+
+                {BRIEF_PAGES[phase].list ? (
+                  <ul className="flex flex-col gap-2.5">
+                    {BRIEF_PAGES[phase].body.map((line, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-gray-600">
+                        <CheckShape className="shrink-0 mt-0.5 text-green-600" width={16} height={16} />
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  BRIEF_PAGES[phase].body.map((line, i) => (
+                    <p key={i} className="text-gray-600">
+                      {line}
+                    </p>
+                  ))
+                )}
+
+                <div className="flex justify-between items-center">
+                  <Button variant="ghost" onClick={() => setPhase(phase === 0 ? 'main' : phase - 1)}>
+                    <ArrowLeft />
+                    Retour
                   </Button>
+                  {phase < BRIEF_PAGES.length - 1 ? (
+                    <Button variant="primary" onClick={() => setPhase(phase + 1)}>
+                      Suivant
+                      <ArrowRight />
+                    </Button>
+                  ) : (
+                    <Button variant="primary" onClick={() => goToStep(1)}>
+                      C'est parti
+                      <ArrowRight />
+                    </Button>
+                  )}
                 </div>
               </div>
             </motion.div>

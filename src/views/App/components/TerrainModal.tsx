@@ -3,7 +3,7 @@ import { Modal, useOverlayState, Button } from '@heroui/react';
 import { CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import { EMPTY_ROBOT_ENTRY, getStepDef } from '../steps/stepDefinitions';
-import { getWrongObservations, hasWrongObservations } from '../robotProfiles';
+import { getWrongObservations, hasWrongObservations, getFailureReasons, CORE_PROFILES } from '../robotProfiles';
 import { CheckFailedModal } from './CheckFailedModal';
 import './TreeNodes.css';
 import thymioRed from '../../../assets/thymio_icon_red.svg';
@@ -46,6 +46,32 @@ export function TerrainModal() {
     () => (observationCheckFailed ? getWrongObservations(robotConfigs, physicalRobotData) : null),
     [observationCheckFailed, robotConfigs, physicalRobotData]
   );
+
+  // Turns each mismatch into a sensor-specific explanation (not just "this is wrong") — the
+  // ground-truth config already tells us exactly which sensor caused the discrepancy.
+  const wrongMessages = useMemo(() => {
+    if (!wrongUuids || wrongUuids.size === 0) {
+      return [];
+    }
+    const lines: string[] = [];
+    robotConfigs.forEach((r, index) => {
+      if (!wrongUuids.has(r.uuid)) {
+        return;
+      }
+      const profile = CORE_PROFILES[index];
+      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
+      if (!profile || !colorDef) {
+        return;
+      }
+      if (profile.expectedCategory === 'repair') {
+        const reasons = getFailureReasons(profile.config);
+        lines.push(`Robot ${colorDef.label} : ${reasons.join(' ')}`);
+      } else {
+        lines.push(`Robot ${colorDef.label} : tous ses capteurs sont bons — il peut vraiment partir.`);
+      }
+    });
+    return lines;
+  }, [wrongUuids, robotConfigs]);
 
   // Only advanceStep() (via the "Continuer" button below) can leave this step — no backdrop/Escape dismissal.
   const state = useOverlayState({ isOpen, onOpenChange: () => {} });
@@ -91,12 +117,14 @@ export function TerrainModal() {
               <div className="flex-1 flex flex-col gap-3">
                 <img src={circuitImage} alt="" className="w-100 max-w-full mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
-                  Direction le circuit ! Lance chaque robot sur le parcours et observe attentivement son
-                  comportement. Utilise le bouton central pour lancer le test d'un robot.
+                  Sur ce circuit tu croises une pente, un tunnel et un passage à faune. Avant de lancer un robot,
+                  regarde ses données du labo : qu'est-ce qui pourrait le faire échouer, et où ? Utilise le bouton
+                  central pour lancer le test.
                 </p>
                 <img src={buttonImage} alt="" className="w-50 max-w-full rounded-xl mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
-                  Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc). Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
+                  Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc).
+                  Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
                 </p>
               </div>
 
@@ -160,10 +188,14 @@ export function TerrainModal() {
       </Modal.Backdrop>
       <CheckFailedModal
         failed={observationCheckFailed}
-        title="Certaines observations semblent incorrectes"
+        title="Le labo et le terrain ne sont pas d'accord"
         messages={[
-          "Certains robots sont marqués « Prêt à partir » ou « À réparer » alors que ce n'est pas ce qui a été observé sur le terrain.",
-          'Vérifie les cartes surlignées en jaune ci-dessus et corrige leur statut.',
+          ...(wrongMessages.length > 0
+            ? wrongMessages
+            : [
+                "Certains robots sont marqués « Prêt à partir » ou « À réparer » alors que ce n'est pas ce qui a été observé sur le terrain.",
+              ]),
+          'Regarde quel capteur correspond à quel obstacle, puis corrige le statut des cartes surlignées en jaune ci-dessus.',
         ]}
       />
     </Modal>
