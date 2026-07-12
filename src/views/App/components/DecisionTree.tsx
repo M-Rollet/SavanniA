@@ -283,7 +283,12 @@ function toAlgoTree(nodeId: string, nodes: Node[], edges: Edge[]): AlgoTree {
 // Manual mode persistence (steps 2 / 4 / 5)
 // ════════════════════════════════════════════════════════════════════════
 
-const STORAGE_KEY = 'savannia-decision-tree';
+// Bump whenever INITIAL_TREE's structure below changes (different questions, edges, or leaf
+// ids) — a saved tree from an older version is otherwise indistinguishable from a student's
+// legitimate step-4/5 edits, so it would get loaded as-is and silently mask the new starting
+// tree (and break anything that targets its fixed node/edge ids, e.g. the step-2 guided tour).
+const TREE_VERSION = 2;
+const STORAGE_KEY = `savannia-decision-tree-v${TREE_VERSION}`;
 
 export function clearSavedTree() {
   localStorage.removeItem(STORAGE_KEY);
@@ -295,21 +300,22 @@ export function clearSavedTree() {
 // Available questionId values: 'light_working' | 'ir_working' | 'motor_noise'
 //                              | 'battery_low' | 'battery_mid' | 'battery_full'
 // Leaf `decision` values: true (robot OK) | false (robot KO)
+// Remember to bump TREE_VERSION above whenever this structure changes.
 const INITIAL_TREE: { nodes: Node[]; edges: Edge[] } = (() => {
   const edges: Edge[] = [
     { id: 'root-out-d1', source: 'root', sourceHandle: 'out', target: 'd1' },
     { id: 'd1-yes-l1', source: 'd1', sourceHandle: 'yes', target: 'l1' }, // battery low → KO
-    { id: 'd1-no-d2', source: 'd1', sourceHandle: 'no', target: 'd2' },
-    { id: 'd2-yes-l2', source: 'd2', sourceHandle: 'yes', target: 'l2' },
-    { id: 'd2-no-l3', source: 'd2', sourceHandle: 'no', target: 'l3' },
+    { id: 'd1-no-l2', source: 'd1', sourceHandle: 'no', target: 'l2' },
+    //{ id: 'd2-no-l2', source: 'd2', sourceHandle: 'no', target: 'l2' },
+    //{ id: 'd2-yes-l3', source: 'd2', sourceHandle: 'yes', target: 'l3' },
   ];
   const nodes: Node[] = [
     { id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} },
-    { id: 'd1', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'battery_low' } },
-    { id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'motor_noise' } },
-    { id: 'l1', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
+    { id: 'd1', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'light_working' } },
+    //{ id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
+    { id: 'l1', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
     { id: 'l2', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
-    { id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
+    //{ id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
   ];
   return { nodes: layoutTree(nodes, edges), edges };
 })();
@@ -543,10 +549,10 @@ function ValidateOverlay({ targets }: { targets: PendingValidation[] }) {
 
 // Delay between the last question resolving (its own colored answer + edge) and the leaf it
 // leads to being revealed (colored result + animation, camera pan, onLeafReached). Both this
-// delay and SoftwareMain's flying-dot animation (0.8s) start from the same seq_done event and run
+// delay and SoftwareMain's flying-dot animation (1s) start from the same seq_done event and run
 // in parallel, not back-to-back — this has to clear the flight's landing time *plus* a real pause
 // after, or the leaf reveal lands right on top of the last value and the wait goes unnoticed.
-const LEAF_REACH_DELAY_MS = 1200;
+const LEAF_REACH_DELAY_MS = 1400;
 
 type ManualTreeProps = {
   testing: boolean;
@@ -554,8 +560,9 @@ type ManualTreeProps = {
   editable?: boolean;
   onValidationChange?: (errors: ValidationError[]) => void;
   onActiveQuestionChange?: (questionId: string | null) => void;
-  /** Fired once when the active test path reaches a leaf node. */
-  onLeafReached?: (nodeId: string) => void;
+  /** Fired once when the active test path reaches a leaf node, with that leaf's decision
+   * (true = ready, false = repair, null = undecided). */
+  onLeafReached?: (nodeId: string, decision: boolean | null) => void;
   /** Show which tested robots land on which leaf, and whether that matches their terrain observation. */
   robotPlacement?: boolean;
   /** Reports how many tested+observed robots the current tree classifies correctly, whenever it changes. */
@@ -574,7 +581,14 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
   },
   ref
 ) {
-  const { controledRobot, robotConfigs, physicalRobotData, externalDataset, setManualTree, stepIndex } = useScenario();
+  const {
+    controledRobot,
+    activeRobotConfigs: robotConfigs,
+    physicalRobotData,
+    externalDataset,
+    setManualTree,
+    stepIndex,
+  } = useScenario();
   const stepFeatures = getStepDef(stepIndex).features;
   const [nodes, setNodes] = useState<Node[]>(() => loadTree().nodes);
   const [edges, setEdges] = useState<Edge[]>(() => loadTree().edges);
@@ -620,16 +634,24 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     onClassificationRef.current = onClassificationChange;
   }, [onClassificationChange]);
 
+  // A fresh test run always starts from a blank path — cleared right when testing STARTS, not
+  // when it stops, so a just-completed run's colored path can persist after SoftwareMain flips
+  // `testing` back to false on natural completion (see handleLeafReached there). Switching robots
+  // clears it separately, below, regardless of testing state.
   useEffect(() => {
-    if (!testing) {
+    if (testing) {
       setActiveHandles(new Map());
       setPendingLeafId(null);
-      if (leafDelayTimerRef.current) {
-        clearTimeout(leafDelayTimerRef.current);
-        leafDelayTimerRef.current = null;
-      }
+    } else if (leafDelayTimerRef.current) {
+      clearTimeout(leafDelayTimerRef.current);
+      leafDelayTimerRef.current = null;
     }
   }, [testing]);
+
+  useEffect(() => {
+    setActiveHandles(new Map());
+    setPendingLeafId(null);
+  }, [controledRobot]);
 
   // ── Persist tree to localStorage (debounced, no positions) ──
   useEffect(() => {
@@ -883,7 +905,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     const cy = node.position.y + getNodeHeight(node.type) / 2;
     setCenter(cx, cy, { zoom: FOCUS_ZOOM, duration: PAN_DURATION });
     if (node.type === 'leaf') {
-      onLeafReachedRef.current?.(node.id);
+      onLeafReachedRef.current?.(node.id, (node.data.decision as boolean | null) ?? null);
     }
   }, [frontierNodeId, pendingLeafId, setCenter]);
 
@@ -896,9 +918,15 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     return path;
   }, [edges, activeHandles, pendingLeafId]);
 
+  // True while actively testing, or right after a completed run whose colored path hasn't been
+  // cleared yet (see the reset effects above) — drives the same visual styling as `testing` used
+  // to alone, but keeps that styling alive past the button-level `testing` flipping back to false
+  // on natural completion.
+  const showActivePath = testing || activeHandles.size > 0;
+
   // ── Enrich edges ──────────────────────────────────────────
   const enrichedEdges = useMemo(() => {
-    if (!testing) {
+    if (!showActivePath) {
       return edges;
     }
     return edges.map(e =>
@@ -906,7 +934,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
         ? { ...e, style: { stroke: robotInfo.color, strokeWidth: 2 } }
         : { ...e, style: { stroke: '#cbd5e1', strokeWidth: 1.5, opacity: 0.3 } }
     );
-  }, [edges, activePath, robotInfo.color, testing]);
+  }, [edges, activePath, robotInfo.color, showActivePath]);
 
   // ── Enrich nodes ──────────────────────────────────────────
   const enrichedNodes = useMemo(
@@ -919,7 +947,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
             isMulti: stepFeatures.robotPlacementOnTree,
             hasChild: edges.some(e => e.source === 'root'),
             onAddFirstChild: addFirstChild,
-            testing,
+            testing: showActivePath,
             editable,
             highlighted: highlightedNodeId === node.id,
           };
@@ -945,7 +973,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
             onChangeQuestion,
             onSetActiveHandle,
             onDelete: deleteNode,
-            testing,
+            testing: showActivePath,
             editable,
             activeHandle: activeHandles.get(node.id) ?? null,
             isOnActivePath: activePath.has(node.id),
@@ -963,7 +991,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
             decision: node.data.decision as boolean | null,
             isOnActivePath: activePath.has(node.id),
             highlighted: highlightedNodeId === node.id,
-            testing,
+            testing: showActivePath,
             editable,
             placements: leafPlacements.get(node.id) ?? [],
             onChangeDecision,
@@ -991,6 +1019,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       onChangeDecision,
       onPlacementClick,
       testing,
+      showActivePath,
       editable,
       activeHandles,
       activePath,

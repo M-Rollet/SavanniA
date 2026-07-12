@@ -1,4 +1,7 @@
 import type { RobotConfig } from '../ScenarioContext';
+import scenarioLabo from '../../../assets/scenario_a.png';
+import scenarioTerrain from '../../../assets/scenario_b.png';
+import scenarioBilan from '../../../assets/scenario_c.png';
 
 export type Criterion = 'light_working' | 'ir_working' | 'motor_noise' | 'battery_level';
 
@@ -11,6 +14,15 @@ export type RobotEntry = {
   /** True once the robot has been run through the decision tree down to a leaf. */
   tested: boolean;
   observation: { category: 'ready' | 'repair'; notes: string } | null;
+  /** Student's own GO/STAY commitment, made from their step-1 manual observations before the
+   * tree announces its verdict (PRIMM's Predict). Optional: entries saved before this field
+   * existed won't have it. */
+  prediction?: 'ready' | 'repair' | null;
+  /** The decision tree's verdict for this robot, captured the first time it reaches a leaf in
+   * step 2 (PRIMM's Run). Frozen at the initial tree, so the step-3 reunion can compare what the
+   * lab predicted against what the terrain actually showed. Optional for the same back-compat
+   * reason as `prediction`. */
+  labVerdict?: 'ready' | 'repair' | null;
 };
 
 export const EMPTY_ROBOT_ENTRY: RobotEntry = {
@@ -18,6 +30,8 @@ export const EMPTY_ROBOT_ENTRY: RobotEntry = {
   lockedCriteria: {},
   tested: false,
   observation: null,
+  prediction: null,
+  labVerdict: null,
 };
 
 /** True once every criterion has a recorded value, regardless of source. */
@@ -238,7 +252,66 @@ export function classifyWithAlgoTree(
   return classifyWithAlgoTree(answer === 'yes' ? tree.yes : tree.no, testResults);
 }
 
-export type TutorialItem = { id: string; text: string };
+/** Visual identity for each of the three mission phases — a colour + icon that carries through
+ * the stepper, phase chip, and accents so a student always knows where they are at a glance. */
+export type Phase = {
+  id: 'labo' | 'terrain' | 'bilan';
+  label: string;
+  /** Imported PNG asset (see assets/scenario_*.png), rendered as an <img>, not raw text. */
+  icon: string;
+  /** One-line description of the phase, shown in the mission-briefing overview. */
+  blurb: string;
+  steps: number[];
+  accentText: string;
+  accentBorder: string;
+  accentBg: string;
+  accentBgSoft: string;
+};
+
+export const PHASES: Phase[] = [
+  {
+    id: 'labo',
+    label: 'Phase 1 · Labo',
+    icon: scenarioLabo,
+    blurb: 'Étudier les capteurs de chaque robot.',
+    steps: [1, 2],
+    accentText: 'text-blue-600',
+    accentBorder: 'border-blue-500',
+    accentBg: 'bg-blue-500',
+    accentBgSoft: 'bg-blue-50',
+  },
+  {
+    id: 'terrain',
+    label: 'Phase 2 · Terrain',
+    icon: scenarioTerrain,
+    blurb: 'Les tester pour de vrai sur le circuit.',
+    steps: [3],
+    accentText: 'text-emerald-600',
+    accentBorder: 'border-emerald-500',
+    accentBg: 'bg-emerald-500',
+    accentBgSoft: 'bg-emerald-50',
+  },
+  {
+    id: 'bilan',
+    label: 'Phase 3 · Bilan & optimisation',
+    icon: scenarioBilan,
+    blurb: 'Comparer, corriger, puis automatiser.',
+    steps: [4, 5, 6, 7],
+    accentText: 'text-amber-600',
+    accentBorder: 'border-amber-500',
+    accentBg: 'bg-amber-500',
+    accentBgSoft: 'bg-amber-50',
+  },
+];
+
+export function phaseForStep(index: number): Phase {
+  return PHASES.find(p => p.steps.includes(index)) ?? PHASES[0];
+}
+
+/** True for the first step of its phase — used to render the phase heading above it in the stepper. */
+export function isPhaseStart(index: number): boolean {
+  return PHASES.some(p => p.steps[0] === index);
+}
 
 export type StepFeatures = {
   /** Team switch modal (bureau/terrain) is available. */
@@ -280,7 +353,13 @@ export type StepDef = {
   shortLabel: string;
   features: StepFeatures;
   canAdvance: (ctx: CanAdvanceCtx) => boolean;
-  tutorial: TutorialItem[];
+  /** The pedagogical "why" — surfaced as a labelled line so it never gets buried in a paragraph. */
+  objective: string;
+  /** The single concrete thing to do now. */
+  action: string;
+  /** Shown once as a pop-up when the step is first reached (see StepIntroModal). Steps whose
+   * arrival is already announced by a dedicated modal (terrain, external data, final) skip it. */
+  intro?: { heading: string; body: string[] };
 };
 
 const NO_FEATURES: StepFeatures = {
@@ -300,33 +379,38 @@ const NO_FEATURES: StepFeatures = {
 export const STEP_DEFS: StepDef[] = [
   {
     index: 1,
-    label: 'Opération manuelle',
-    shortLabel: 'Manuel',
+    label: 'Premières observations',
+    shortLabel: 'Observations',
     features: { ...NO_FEATURES, manualOp: true, dataTable: true, dataEditable: true },
-    canAdvance: () => true,
-    tutorial: [
-      {
-        id: 'manual-intro',
-        text: "Voici l'interface de contrôle manuel. Sélectionne un robot et teste les fonctionnalités. Tu peux remplir tes observations dans le tableau ci-dessous.",
-      },
-    ],
-  },
-  {
-    index: 2,
-    label: 'Arbre de décision',
-    shortLabel: 'Découverte',
-    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true, dataEditable: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 &&
       robotConfigs.every(
-        ({ uuid }) => physicalRobotData[uuid]?.tested === true && hasAllCriteria(physicalRobotData[uuid])
+        ({ uuid }) => hasAllCriteria(physicalRobotData[uuid]) && physicalRobotData[uuid]?.prediction != null
       ),
-    tutorial: [
-      {
-        id: 'discovery-intro',
-        text: "Voici le programme de tri des robots. Il s'agit d'un arbre de décision avec plusieurs questions. Sélectionne chaque robot et regarde comment cela fonctionne. Après avoir tout testé et complété toutes les observations, tu pourras passer à la suite.",
-      },
-    ],
+    objective: "Découvrir l'état de chaque robot avant de décider.",
+    action: 'Teste les capteurs de chaque robot, note tes observations, puis donne ton pronostic dans le tableau.',
+    intro: {
+      heading: 'Phase 1 · Labo — Premières observations',
+      body: [
+        "Avant d'envoyer un robot dans la savane, un scientifique commence par examiner son matériel lui-même. Allume les phares, fais tourner les moteurs, approche ta main des capteurs, vérifie la batterie.",
+        "Note ce que tu observes dans le tableau, robot par robot. Ce sont tes premières impressions — elles ne sont pas encore vérifiées, et c'est normal.",
+        "Puis, dans la colonne « Pronostic », engage-toi pour chaque robot : d'après ce que tu as vu, est-il prêt à partir ou à réparer ? Ce n'est pas grave de se tromper — on vérifiera ensuite.",
+      ],
+    },
+  },
+  {
+    index: 2,
+    label: 'Prédiction du labo',
+    shortLabel: 'Prédiction',
+    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true, dataEditable: true },
+    // Completeness (all criteria filled) is already guaranteed by step 1's own gate — this step
+    // only adds "actually run through the tree" on top of that.
+    canAdvance: ({ physicalRobotData, robotConfigs }) =>
+      robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.tested === true),
+    objective: 'Voir comment un programme décide — et le comparer à ton pronostic.',
+    action: "Fais passer chaque robot dans l'arbre de décision.",
+    // Arrival is announced by the dedicated DecisionTreeIntroModal (reflection + graphical
+    // explanation of what a decision tree is), so no text intro here.
   },
   {
     index: 3,
@@ -335,7 +419,8 @@ export const STEP_DEFS: StepDef[] = [
     features: { ...NO_FEATURES, observationEntry: true, fieldTest: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.observation != null),
-    tutorial: [{ id: 'terrain-intro', text: 'Direction le terrain : observe chaque robot en conditions réelles.' }],
+    objective: 'Découvrir ce que valent vraiment tes prédictions.',
+    action: "Lance chaque robot sur le circuit et note s'il réussit.",
   },
   {
     index: 4,
@@ -352,12 +437,9 @@ export const STEP_DEFS: StepDef[] = [
     },
     canAdvance: ({ treeAccuracy }) =>
       treeAccuracy !== null && treeAccuracy.total > 0 && treeAccuracy.correct === treeAccuracy.total,
-    tutorial: [
-      {
-        id: 'refine-intro',
-        text: "Certaines observations sur le terrain ne correspondent pas aux résultats de l'arbre de décision. Modifie le pour que les robots soient correctement triés.",
-      },
-    ],
+    objective: "Voir que changer les conditions de l'arbre change ses résultats.",
+    action: "Modifie les questions de l'arbre pour bien classer tous les robots.",
+    // Arrival + the how-to-edit instructions are in the dedicated ReunionModal (three-way bilan).
   },
   {
     index: 5,
@@ -373,9 +455,8 @@ export const STEP_DEFS: StepDef[] = [
       robotPlacementOnTree: true,
     },
     canAdvance: () => true,
-    tutorial: [
-      { id: 'external-intro', text: "Essaie de modifier l'arbre pour qu'il trie tous les robots correctement." },
-    ],
+    objective: 'Vérifier que ton arbre marche aussi sur des robots inconnus.',
+    action: "Ajuste l'arbre pour trier correctement les nouveaux robots.",
   },
   {
     index: 6,
@@ -383,12 +464,15 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Algorithme',
     features: { ...NO_FEATURES, algorithmMode: true, dataTable: true },
     canAdvance: ({ algorithmTree }) => algorithmTree !== null && isAlgoTreeComplete(algorithmTree),
-    tutorial: [
-      {
-        id: 'algo-intro',
-        text: "Il est difficile de contruire l'arbre de décision à la main. Nous allons essayer de trouver une méthode pour le faire ! Teste toutes les questions possible et choisis celle qui te semble la plus pertinente.",
-      },
-    ],
+    objective: "Trouver une méthode automatique pour construire l'arbre.",
+    action: "À chaque étape, garde la question qui fait le moins d'erreurs.",
+    intro: {
+      heading: "Construire l'algorithme",
+      body: [
+        "Avec 6 robots, trier à la main reste possible. Mais l'autre équipe vient d'en envoyer 30 de plus — impossible de continuer au feeling.",
+        "Il nous faut une méthode automatique qui marche à chaque fois, quel que soit le nombre de robots : à chaque étape, tester toutes les questions possibles et garder celle qui fait le moins d'erreurs. À toi de la découvrir.",
+      ],
+    },
   },
   {
     index: 7,
@@ -396,7 +480,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Final',
     features: { ...NO_FEATURES, fieldTest: true },
     canAdvance: () => false,
-    tutorial: [{ id: 'final-intro', text: 'Vérifie que ton IA choisit les bons robots pour la mission.' }],
+    objective: 'Prouver que ton IA fonctionne.',
+    action: "Vérifie qu'elle choisit les bons robots pour la mission.",
   },
 ];
 

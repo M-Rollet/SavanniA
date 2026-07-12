@@ -80,7 +80,12 @@ export function SettingsOverlay() {
 
   return (
     <Modal state={state}>
-      <Modal.Backdrop isDismissable>
+      {/* Settings must stay reachable even when another modal or the guided tour's dimming
+          overlay (z-[99999]) is blocking the rest of the app — see SettingsButton. An inline
+          style is used (rather than a z-\[100000\] class) since HeroUI's className merging is a
+          plain concat, not a specificity-aware override, so a class here could lose to the
+          library's own z-50 depending on stylesheet order. */}
+      <Modal.Backdrop isDismissable style={{ zIndex: 100000 }}>
         <Modal.Container size="lg">
           <Modal.Dialog>
             <Modal.Header>

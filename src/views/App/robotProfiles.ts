@@ -19,6 +19,14 @@ export type Profile = {
 export const MIN_ROBOTS = 4;
 export const MAX_ROBOTS = 6; // === CORE_PROFILES.length
 
+/** Steps 1-4 only ever work with the first MIN_ROBOTS configured robots (by priority/array
+ * position — see CORE_PROFILE_DEFS above), regardless of how many are actually connected. Any
+ * extra ones stay unavailable until later steps (introduced separately). Generic so it works
+ * directly on `RobotConfig[]` without this module needing to import that type. */
+export function getActiveRobotConfigs<T>(robotConfigs: T[], stepIndex: number): T[] {
+  return stepIndex >= 1 && stepIndex <= 4 ? robotConfigs.slice(0, MIN_ROBOTS) : robotConfigs;
+}
+
 // Priority order: success anchor + the two discoveries first, then the minimal-
 // pair completer, then the two rules already baked into the start tree.
 //
@@ -31,7 +39,7 @@ const CORE_PROFILE_DEFS: { priority: number; role: string; config: ColorConfig }
   {
     priority: 1,
     role: 'Success anchor (best robot)',
-    config: { light_working: 1, ir_working: 1, motor_noise: 0, battery_level: 1 },
+    config: { light_working: 1, ir_working: 1, motor_noise: 1, battery_level: 2 },
   },
   {
     priority: 2,
@@ -41,7 +49,7 @@ const CORE_PROFILE_DEFS: { priority: number; role: string; config: ColorConfig }
   {
     priority: 3,
     role: 'Discovery: broken light -> crashes in the tunnel',
-    config: { light_working: 1, ir_working: 1, motor_noise: 0, battery_level: 0 },
+    config: { light_working: 1, ir_working: 0, motor_noise: 0, battery_level: 0 },
   },
   {
     priority: 4,
@@ -51,12 +59,12 @@ const CORE_PROFILE_DEFS: { priority: number; role: string; config: ColorConfig }
   {
     priority: 5,
     role: 'Confirms the IR rule (already in the start tree)',
-    config: { light_working: 0, ir_working: 1, motor_noise: 1, battery_level: 2 },
+    config: { light_working: 0, ir_working: 1, motor_noise: 0, battery_level: 2 },
   },
   {
     priority: 6,
     role: 'Confirms the battery rule (already in the start tree)',
-    config: { light_working: 1, ir_working: 1, motor_noise: 1, battery_level: 0 },
+    config: { light_working: 0, ir_working: 1, motor_noise: 0, battery_level: 1 },
   },
 ];
 
@@ -64,6 +72,32 @@ export const CORE_PROFILES: Profile[] = CORE_PROFILE_DEFS.map(p => ({
   ...p,
   expectedCategory: categorizeConfig(p.config),
 }));
+
+/** Plain-language, sensor-specific reason a config fails a given check — ties the terrain
+ * consequence back to the exact sensor a student can see in the lab data. */
+const FAILURE_HINTS = {
+  light_working: "ses phares ne s'allument pas — dans le tunnel, il ne verra rien venir.",
+  ir_working: 'son capteur de distance ne répond pas — il ne détectera ni obstacles ni passages à faune.',
+  motor_noise: 'son moteur fait un bruit inhabituel — sur la pente, il risque de caler.',
+  battery_level: "sa batterie est trop faible — il n'ira pas bien loin.",
+} as const;
+
+/** Returns the sensor-specific reasons a robot's ground-truth config counts as 'repair' (empty if 'ready'). */
+export function getFailureReasons(cfg: ColorConfig): string[] {
+  const reasons: string[] = [];
+  if (cfg.light_working !== 1) {
+    reasons.push(FAILURE_HINTS.light_working);
+  }
+  if (cfg.ir_working !== 1) {
+    reasons.push(FAILURE_HINTS.ir_working);
+  }
+  if (cfg.battery_level === 0) {
+    reasons.push(FAILURE_HINTS.battery_level);
+  } else if (cfg.motor_noise === 1 && cfg.battery_level <= 1) {
+    reasons.push(FAILURE_HINTS.motor_noise);
+  }
+  return reasons;
+}
 
 /** Maps a question ID to the event name emitted to the robot to trigger its test sequence. */
 export const QUESTION_SEQ_TYPE: Partial<Record<string, string>> = {

@@ -5,6 +5,7 @@ import { tdmConnectionEvents } from '../../Entities/ThymioManager/tdmConnectionE
 import type { Users } from '../../Entities/ThymioManager/Model/users.model';
 import { useLocalStorage } from '../../helpers/useLocalStorage';
 import { clearSavedTree } from './components/DecisionTree';
+import { getActiveRobotConfigs } from './robotProfiles';
 import {
   getStepDef,
   STEP_DEFS,
@@ -50,6 +51,12 @@ type ScenarioState = {
   ) => Promise<void>;
   robotConfigs: RobotConfig[];
   setRobotConfigs: (configs: RobotConfig[]) => void;
+  /** The subset of robotConfigs actually available to the student for the current step — steps
+   * 1-4 are capped to the first MIN_ROBOTS (by priority/array position) regardless of how many
+   * are configured; every other step gets the full list. Use this (not robotConfigs) for
+   * anything student-facing — robot selection, table rows, terrain cards, etc. robotConfigs
+   * itself stays the full list for admin purposes (SettingsOverlay) and persistence. */
+  activeRobotConfigs: RobotConfig[];
   /** Map of robot UUID → team assignment. Empty until set via the team-switch modal (step 4+). */
   robotTeams: Record<string, RobotTeam>;
   setRobotTeams: (teams: Record<string, RobotTeam>) => void;
@@ -74,6 +81,40 @@ type ScenarioState = {
   /** True once step 3's end-of-step check has found terrain observations that don't match the ground truth. */
   observationCheckFailed: boolean;
   setObservationCheckFailed: (failed: boolean) => void;
+  /** Cells (`${uuid}-${criterion}`) whose manually-entered value was overwritten by a tree test
+   * that measured something different — mapped to the earlier manual value, for the DataTable
+   * marker's tooltip. Never cleared automatically: it's a running record for the session. */
+  correctedCriteria: Record<string, number>;
+  setCorrectedCriteria: (data: Record<string, number>) => void;
+  /** Guided-tour progress: 0 = inactive. 1-8 = the spotlighted steps (see TourOverlay.tsx). Special
+   * values above 99 mark the standard-modal interludes and the "waiting for the robot's row to be
+   * completed" pause between them. Persisted so a reload mid-tour resumes instead of restarting. */
+  tourStep: number;
+  setTourStep: (step: number) => void;
+  /** True once the guided tour has been completed or explicitly skipped — prevents it from
+   * auto-starting again after step 1's intro modal. */
+  tourSeen: boolean;
+  setTourSeen: (seen: boolean) => void;
+  /** Same as tourSeen, for the step-2 guided tour of the decision tree (started from
+   * DecisionTreeIntroModal instead of StepIntroModal). */
+  tour2Seen: boolean;
+  setTour2Seen: (seen: boolean) => void;
+  /** True while DataTable's EditRobotModal is open — the guided tour waits for it to close before
+   * showing the next popover, so it never renders behind that modal. */
+  editRobotModalOpen: boolean;
+  setEditRobotModalOpen: (open: boolean) => void;
+  /** Mirrors SoftwareMain's local "testing" state — true while a robot is actively being run
+   * through the tree. The step-2 guided tour hides its own highlight while this is true, so the
+   * tree's own pan/animation is fully visible instead of fighting the tour's dimmed overlay. */
+  robotTestActive: boolean;
+  setRobotTestActive: (active: boolean) => void;
+  /** Which robot's colored test result is currently shown in the tree — set by SoftwareMain the
+   * moment a test reaches a leaf, cleared the moment a different robot gets selected. Unlike
+   * physicalRobotData's `tested` flag (permanent, set only once), this flips on every completed
+   * run, so the step-2 guided tour can tell a genuinely fresh test apart from a robot that just
+   * happens to have been tested earlier — see TourOverlay's step 27 → 28 transition. */
+  testResultRobot: string | null;
+  setTestResultRobot: (uuid: string | null) => void;
   /** Lets SoftwareMain register a callback that stops any in-progress robot test; called before every step advance. */
   registerStopTesting: (fn: (() => void) | null) => void;
   resetApp: () => void;
@@ -90,6 +131,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [stepIndex, setStepIndex] = useLocalStorage<number>('scenario:stepIndex', 0);
   const [controledRobot, setControledRobot] = useLocalStorage<string>('scenario:robot', '');
   const [robotConfigs, setRobotConfigs] = useLocalStorage<RobotConfig[]>('scenario:robots', []);
+  const activeRobotConfigs = useMemo(() => getActiveRobotConfigs(robotConfigs, stepIndex), [robotConfigs, stepIndex]);
   const [robotTeams, setRobotTeams] = useLocalStorage<Record<string, RobotTeam>>('scenario:teams', {});
   const [physicalRobotData, setPhysicalRobotData] = useLocalStorage<Record<string, RobotEntry>>(
     'scenario:physicalRobotData',
@@ -101,11 +143,18 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [treeAccuracy, setTreeAccuracy] = useState<TreeAccuracy | null>(null);
   const [dataCheckFailed, setDataCheckFailed] = useState(false);
   const [observationCheckFailed, setObservationCheckFailed] = useState(false);
+  const [correctedCriteria, setCorrectedCriteria] = useState<Record<string, number>>({});
+  const [tourStep, setTourStep] = useLocalStorage<number>('scenario:tourStep', 0);
+  const [tourSeen, setTourSeen] = useLocalStorage<boolean>('scenario:tourSeen', false);
+  const [tour2Seen, setTour2Seen] = useLocalStorage<boolean>('scenario:tour2Seen', false);
+  const [editRobotModalOpen, setEditRobotModalOpen] = useState(false);
+  const [robotTestActive, setRobotTestActive] = useState(false);
+  const [testResultRobot, setTestResultRobot] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Only ever relevant on step 2 — clear it once the user leaves that step.
+  // Only ever relevant on step 1 — clear it once the user leaves that step.
   useEffect(() => {
-    if (stepIndex !== 2) {
+    if (stepIndex !== 1) {
       setDataCheckFailed(false);
     }
   }, [stepIndex]);
@@ -114,6 +163,15 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (stepIndex !== 3) {
       setObservationCheckFailed(false);
+    }
+  }, [stepIndex]);
+
+  // Only ever relevant on step 2 (live single-robot testing) — clear it once the user leaves that
+  // step, so the table's colored "just tested" cell doesn't linger (even off-screen) into step 3
+  // and beyond, where it could wrongly reappear for whichever robot happens to be selected again.
+  useEffect(() => {
+    if (stepIndex !== 2) {
+      setTestResultRobot(null);
     }
   }, [stepIndex]);
 
@@ -171,12 +229,14 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     if (stepIndex >= STEP_DEFS.length) {
       return;
     }
-    if (!current.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy })) {
+    // activeRobotConfigs (not robotConfigs): steps 1-4's canAdvance checks must only require the
+    // robots actually available at that step, not every configured robot.
+    if (!current.canAdvance({ physicalRobotData, robotConfigs: activeRobotConfigs, algorithmTree, treeAccuracy })) {
       return;
     }
     stopTestingRef.current?.();
     setStepIndex(stepIndex + 1);
-  }, [stepIndex, physicalRobotData, robotConfigs, algorithmTree, treeAccuracy, setStepIndex]);
+  }, [stepIndex, physicalRobotData, activeRobotConfigs, algorithmTree, treeAccuracy, setStepIndex]);
 
   // Keep a ref so the auto-assign effect always reads latest teams without re-triggering.
   const robotTeamsRef = useRef(robotTeams);
@@ -210,6 +270,12 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(() => {
     clearSavedTree();
+    // Owned by StepIntroModal / ReunionModal / DecisionTreeIntroModal's useLocalStorage; safe to
+    // clear here because resetting to the welcome screen unmounts SoftwareMain, so the modals
+    // re-read storage on next mount.
+    localStorage.removeItem('scenario:introSeen');
+    localStorage.removeItem('scenario:reunionSeen');
+    localStorage.removeItem('scenario:dtIntroSeen');
     setStepIndex(0);
     setControledRobot('');
     setRobotConfigs([]);
@@ -219,7 +285,22 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setAlgorithmTree(null);
     setManualTree(null);
     setTreeAccuracy(null);
-  }, [setStepIndex, setControledRobot, setRobotConfigs, setRobotTeams, setPhysicalRobotData, setExternalDataset]);
+    setCorrectedCriteria({});
+    setTourStep(0);
+    setTourSeen(false);
+    setTour2Seen(false);
+    setEditRobotModalOpen(false);
+  }, [
+    setStepIndex,
+    setControledRobot,
+    setRobotConfigs,
+    setRobotTeams,
+    setPhysicalRobotData,
+    setExternalDataset,
+    setTourStep,
+    setTourSeen,
+    setTour2Seen,
+  ]);
 
   const openSettings = useCallback(() => setIsSettingsOpen(true), []);
   const closeSettings = useCallback(() => setIsSettingsOpen(false), []);
@@ -238,6 +319,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       initializeRobot,
       robotConfigs,
       setRobotConfigs,
+      activeRobotConfigs,
       robotTeams,
       setRobotTeams,
       physicalRobotData,
@@ -254,6 +336,20 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setDataCheckFailed,
       observationCheckFailed,
       setObservationCheckFailed,
+      correctedCriteria,
+      setCorrectedCriteria,
+      tourStep,
+      setTourStep,
+      tourSeen,
+      setTourSeen,
+      tour2Seen,
+      setTour2Seen,
+      editRobotModalOpen,
+      setEditRobotModalOpen,
+      robotTestActive,
+      setRobotTestActive,
+      testResultRobot,
+      setTestResultRobot,
       registerStopTesting,
       resetApp,
       isSettingsOpen,
@@ -269,6 +365,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       initializeRobot,
       robotConfigs,
       setRobotConfigs,
+      activeRobotConfigs,
       robotTeams,
       setRobotTeams,
       physicalRobotData,
@@ -285,6 +382,20 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setDataCheckFailed,
       observationCheckFailed,
       setObservationCheckFailed,
+      correctedCriteria,
+      setCorrectedCriteria,
+      tourStep,
+      setTourStep,
+      tourSeen,
+      setTourSeen,
+      tour2Seen,
+      setTour2Seen,
+      editRobotModalOpen,
+      setEditRobotModalOpen,
+      robotTestActive,
+      setRobotTestActive,
+      testResultRobot,
+      setTestResultRobot,
       registerStopTesting,
       resetApp,
       isSettingsOpen,

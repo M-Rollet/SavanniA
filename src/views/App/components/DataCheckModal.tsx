@@ -1,7 +1,7 @@
 import { useScenario } from '../ScenarioContext';
 import { CheckFailedModal } from './CheckFailedModal';
 
-/** Notifies the user that some step-2 test results don't match what was observed on the robot. */
+/** Notifies the user that some step-1 manual observations don't match the robot's ground truth. */
 export function DataCheckModal() {
   const { dataCheckFailed } = useScenario();
 

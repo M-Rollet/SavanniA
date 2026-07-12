@@ -6,6 +6,10 @@ import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
 import { ManualOperation } from '../components/ManualOperation';
 import { useScenario, ROBOT_COLORS, type RobotTeam } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
+import { StepIntroModal } from '../components/StepIntroModal';
+import { ReunionModal } from '../components/ReunionModal';
+import { DecisionTreeIntroModal } from '../components/DecisionTreeIntroModal';
+import { TourOverlay, isLaunchTestLockedByTour } from '../components/TourOverlay';
 import { TerrainModal } from '../components/TerrainModal';
 import { DataCheckModal } from '../components/DataCheckModal';
 import { ExternalDataIntroModal } from '../components/ExternalDataIntroModal';
@@ -17,6 +21,9 @@ import { getStepDef, EMPTY_ROBOT_ENTRY, questionIdToCriterion, hasAllCriteria } 
 import { CORE_PROFILES, QUESTION_SEQ_TYPE } from '../robotProfiles';
 
 const SEQ_TIMEOUT_MS = 10000;
+// Flying-dot size for the tree → table result animation (see `flyToCell`) — kept large enough to
+// read clearly as it crosses the whole screen, not just a small tick.
+const FLIGHT_DOT_SIZE = 24;
 import logo from '../../../assets/logo.svg';
 import thymioDefault from '../../../assets/thymio_icon.svg';
 import thymioRed from '../../../assets/thymio_icon_red.svg';
@@ -87,6 +94,13 @@ export function SoftwareMain() {
     setTreeAccuracy,
     registerStopTesting,
     externalDataset,
+    correctedCriteria,
+    setCorrectedCriteria,
+    setRobotTestActive,
+    testResultRobot,
+    setTestResultRobot,
+    tourStep,
+    activeRobotConfigs,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
   const showTree = stepDef.features.treeVisible;
@@ -95,9 +109,15 @@ export function SoftwareMain() {
   const [manualMode, setManualMode] = useState(false);
   const effectiveManualMode = showToggle ? manualMode : showManual;
 
+  // activeRobotConfigs (not robotConfigs): drives both the selector dots and the connection-poll
+  // loop below, so steps 1-4 only ever connect/offer the first MIN_ROBOTS robots — the rest quietly
+  // pick up once the step advances and activeRobotConfigs opens back up to the full list.
   const controllableRobots = useMemo(
-    () => (stepDef.features.teamSwitch ? robotConfigs.filter(r => robotTeams[r.uuid] === 'bureau') : robotConfigs),
-    [stepDef.features.teamSwitch, robotConfigs, robotTeams]
+    () =>
+      stepDef.features.teamSwitch
+        ? activeRobotConfigs.filter(r => robotTeams[r.uuid] === 'bureau')
+        : activeRobotConfigs,
+    [stepDef.features.teamSwitch, activeRobotConfigs, robotTeams]
   );
   // Steps that place every robot on the tree (4/5) show an aggregate view on that tab instead of
   // a single selected robot — there's no per-robot selector there anymore, so a robot picked
@@ -113,6 +133,18 @@ export function SoftwareMain() {
     [robotConfigs, physicalRobotData, externalDataset]
   );
   const [testing, setTesting] = useState(false);
+
+  // Mirrored into context so the step-2 guided tour can hide its own highlight while a test is
+  // actively running, letting the tree's own pan/animation show through unobstructed.
+  useEffect(() => {
+    setRobotTestActive(testing);
+  }, [testing, setRobotTestActive]);
+
+  // A newly selected robot always starts from a blank slate — see the matching reset in
+  // DecisionTree.tsx that clears the tree's own colored path on the same trigger.
+  useEffect(() => {
+    setTestResultRobot(null);
+  }, [controledRobot]);
 
   // Let the scenario stop any in-progress robot test right before advancing to the next step.
   useEffect(() => {
@@ -137,6 +169,7 @@ export function SoftwareMain() {
   const physicalRobotDataRef = useRef(physicalRobotData);
   const statusesRef = useRef(statuses);
   const fieldTestRef = useRef(stepDef.features.fieldTest);
+  const correctedCriteriaRef = useRef(correctedCriteria);
   useLayoutEffect(() => {
     testingRef.current = testing;
   }, [testing]);
@@ -161,6 +194,9 @@ export function SoftwareMain() {
   useLayoutEffect(() => {
     fieldTestRef.current = stepDef.features.fieldTest;
   }, [stepDef.features.fieldTest]);
+  useLayoutEffect(() => {
+    correctedCriteriaRef.current = correctedCriteria;
+  }, [correctedCriteria]);
 
   // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau", and
   // always land on the tree tab (not wherever "Opération manuelle" was left at, e.g. from step 2).
@@ -213,8 +249,14 @@ export function SoftwareMain() {
         ...prev,
         {
           id: `${uuid}-${cellSuffix}-${Date.now()}`,
-          from: { x: originRect.left + originRect.width / 2 - 6, y: originRect.top + originRect.height / 2 - 6 },
-          to: { x: targetRect.left + targetRect.width / 2 - 6, y: targetRect.top + targetRect.height / 2 - 6 },
+          from: {
+            x: originRect.left + originRect.width / 2 - FLIGHT_DOT_SIZE / 2,
+            y: originRect.top + originRect.height / 2 - FLIGHT_DOT_SIZE / 2,
+          },
+          to: {
+            x: targetRect.left + targetRect.width / 2 - FLIGHT_DOT_SIZE / 2,
+            y: targetRect.top + targetRect.height / 2 - FLIGHT_DOT_SIZE / 2,
+          },
           color: color ?? '#3b82f6',
           onComplete,
         },
@@ -224,21 +266,35 @@ export function SoftwareMain() {
     }
   }, []);
 
-  // Marks the currently-selected robot as tested once its test run reaches a tree leaf.
-  const handleLeafReached = useCallback(() => {
-    const uuid = controledRobotRef.current;
-    if (!uuid) {
-      return;
-    }
-    const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
-    if (entry.tested) {
-      return;
-    }
-    flyToCell(uuid, 'prediction', () => {
-      const latest = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
-      setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...latest, tested: true } });
-    });
-  }, [flyToCell, setPhysicalRobotData]);
+  // Marks the currently-selected robot as tested once its test run reaches a tree leaf, and
+  // freezes the tree's verdict there. The `entry.tested` check means the recorded verdict only
+  // ever comes from the very first leaf (step 2's initial tree), so labVerdict stays the lab's
+  // original prediction even after the tree is edited in step 4 — that frozen value is what the
+  // step-4 reunion compares against. Re-running the test later (e.g. after revisiting this robot)
+  // still animates and stops the button normally, it just doesn't overwrite that frozen verdict.
+  const handleLeafReached = useCallback(
+    (_nodeId: string, decision: boolean | null) => {
+      const uuid = controledRobotRef.current;
+      if (!uuid) {
+        return;
+      }
+      const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+      const alreadyTested = entry.tested;
+      const labVerdict = decision === null ? null : decision ? 'ready' : 'repair';
+      flyToCell(uuid, 'prediction', () => {
+        if (!alreadyTested) {
+          const latest = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+          setPhysicalRobotData({ ...physicalRobotDataRef.current, [uuid]: { ...latest, tested: true, labVerdict } });
+        }
+        // The test has reached its verdict — "Arrêter" no longer makes sense; the button now
+        // shows disabled for as long as this robot (and its colored result) stays on screen —
+        // see testResultRobot, reset the moment a different robot gets selected.
+        setTesting(false);
+        setTestResultRobot(uuid);
+      });
+    },
+    [flyToCell, setPhysicalRobotData]
+  );
 
   // Records the observed value for the criterion behind the currently-active question.
   const recordCriterionResult = useCallback(
@@ -248,19 +304,27 @@ export function SoftwareMain() {
       if (!uuid || !criterion) {
         return;
       }
-      flyToCell(uuid, criterion, () => {
-        const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
-        setPhysicalRobotData({
-          ...physicalRobotDataRef.current,
-          [uuid]: {
-            ...entry,
-            testResults: { ...entry.testResults, [criterion]: value },
-            lockedCriteria: { ...entry.lockedCriteria, [criterion]: true },
-          },
-        });
+      // No flying-dot animation here (unlike handleLeafReached below) — it's reserved for the
+      // final tree verdict landing in the table; intermediate criterion results just update
+      // directly.
+      const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
+      const priorManualValue = entry.testResults[criterion];
+      // A prior, still-unlocked value came from the student's own manual entry (step 1) — if
+      // the tree's real test measures something else, that's not noise, it's the whole point:
+      // flag it so the DataTable can mark the cell instead of silently overwriting it.
+      if (!entry.lockedCriteria[criterion] && priorManualValue !== undefined && priorManualValue !== value) {
+        setCorrectedCriteria({ ...correctedCriteriaRef.current, [`${uuid}-${criterion}`]: priorManualValue });
+      }
+      setPhysicalRobotData({
+        ...physicalRobotDataRef.current,
+        [uuid]: {
+          ...entry,
+          testResults: { ...entry.testResults, [criterion]: value },
+          lockedCriteria: { ...entry.lockedCriteria, [criterion]: true },
+        },
       });
     },
-    [flyToCell, setPhysicalRobotData]
+    [setPhysicalRobotData, setCorrectedCriteria]
   );
 
   // Convert a raw seq_done value to a tree answer for the active question.
@@ -415,6 +479,10 @@ export function SoftwareMain() {
   }, [robotTeams]);
 
   const robotReady = !!controledRobot && statuses[controledRobot] === 'ready';
+  // True while the currently selected robot's colored test result is still the one showing in the
+  // tree — "Lancer le test" stays disabled (not offered as "Arrêter") for that window, but re-
+  // enables the moment a different robot is selected, even if that one was tested before too.
+  const testResultVisible = !!controledRobot && testResultRobot === controledRobot;
   const treeValid = validationErrors.length === 0;
   // Clear any pending auto-answer when testing stops.
   useEffect(() => {
@@ -525,12 +593,19 @@ export function SoftwareMain() {
       {/* ── Main ────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left — Programme (2/3) */}
-        <div className="flex flex-col gap-4 p-4 border-r overflow-hidden" style={{ flex: '4 1 0' }}>
+        <div
+          data-tour="left-panel"
+          className="flex flex-col gap-4 p-4 border-r overflow-hidden"
+          style={{ flex: '4 1 0' }}
+        >
           <div className="flex flex-col flex-1 min-h-0">
             {/* Action row */}
             <div className="shrink-0 flex items-center gap-3">
               {/* Tab pill */}
-              <div className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1">
+              <div
+                data-tour="robot-selector"
+                className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1"
+              >
                 <img src={thymioIcon} alt="Robot :" className="h-10 mr-1 transition-all duration-300" />
 
                 {stepDef.features.algorithmMode ? (
@@ -539,8 +614,8 @@ export function SoftwareMain() {
                   </span>
                 ) : showAggregateRobots ? (
                   <span className="text-sm font-medium text-gray-600 px-1">
-                    {robotConfigs.length + externalDataset.length} robot
-                    {robotConfigs.length + externalDataset.length > 1 ? 's' : ''}
+                    {activeRobotConfigs.length + externalDataset.length} robot
+                    {activeRobotConfigs.length + externalDataset.length > 1 ? 's' : ''}
                   </span>
                 ) : (
                   <>
@@ -549,7 +624,10 @@ export function SoftwareMain() {
                         const c = ROBOT_COLORS.find(x => x.id === color)!;
                         const ds = displayState(statuses[uuid]);
                         const isSelected = controledRobot === uuid && ds === 'ready';
-                        const locked = testing && activeQuestion !== null;
+                        // Other robots only become selectable again once no test is running at
+                        // all — not just between questions — so switching mid-test always
+                        // requires explicitly stopping it (Arrêter) first.
+                        const locked = testing;
 
                         return (
                           <RobotDot
@@ -563,13 +641,7 @@ export function SoftwareMain() {
                               if (ds !== 'ready' || locked) {
                                 return;
                               }
-                              if (testing && !isSelected) {
-                                // At decision node: switch robot and exit test mode.
-                                setTesting(false);
-                                selectRobot(uuid);
-                              } else if (!testing) {
-                                selectRobot(uuid);
-                              }
+                              selectRobot(uuid);
                             }}
                           />
                         );
@@ -580,15 +652,19 @@ export function SoftwareMain() {
                     {showTree && !effectiveManualMode && (
                       <>
                         <div className="w-px h-4 bg-gray-200 mx-1" />
-                        <Button
-                          variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
-                          size="sm"
-                          isDisabled={!testing && !robotReady}
-                          onPress={handleLaunchTest}
-                          className={testing ? '!bg-red-500' : ''}
-                        >
-                          {testing ? '■ Arrêter' : '▶ Lancer le test'}
-                        </Button>
+                        <div data-tour="launch-test-button">
+                          <Button
+                            variant={!testing && !treeValid && robotReady ? 'secondary' : 'primary'}
+                            size="sm"
+                            isDisabled={
+                              !testing && (!robotReady || testResultVisible || isLaunchTestLockedByTour(tourStep))
+                            }
+                            onPress={handleLaunchTest}
+                            className={testing ? '!bg-red-500' : ''}
+                          >
+                            {testing ? '■ Arrêter' : '▶ Lancer le test'}
+                          </Button>
+                        </div>
                       </>
                     )}
                   </>
@@ -639,7 +715,7 @@ export function SoftwareMain() {
                 </div>
               ) : effectiveManualMode ? (
                 <ManualOperation
-                  key={controledRobot}
+                  robotId={controledRobot}
                   disabled={!robotReady}
                   onEmitEvent={event => user.emitEvent(controledRobot, event)}
                   arc={sensorData.battery / 224}
@@ -671,8 +747,13 @@ export function SoftwareMain() {
             <TimelinePanel />
           </div>
 
-          <div className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '2 1 0' }}>
+          <div data-tour="table-zone" className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '2 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
+            {stepIndex === 1 && (
+              <p className="text-gray-500 text-xs -mt-2">
+                Clique sur un robot pour noter ce que tu observes, puis donne ton pronostic dans la colonne dédiée.
+              </p>
+            )}
             {stepDef.features.dataTable ? (
               <DataTable />
             ) : (
@@ -685,6 +766,10 @@ export function SoftwareMain() {
       </div>
 
       {stepDef.features.teamSwitch && <TeamModal isOpen={teamModalOpen} onClose={() => setTeamModalOpen(false)} />}
+      <StepIntroModal />
+      <TourOverlay />
+      <DecisionTreeIntroModal />
+      <ReunionModal />
       <TerrainModal />
       <ExternalDataIntroModal />
       <FinalTestModal />
@@ -694,11 +779,30 @@ export function SoftwareMain() {
         {flights.map(f => (
           <motion.div
             key={f.id}
-            className="fixed w-3 h-3 rounded-full z-[100] pointer-events-none shadow"
-            style={{ backgroundColor: f.color }}
+            className="fixed rounded-full z-[100] pointer-events-none"
+            style={{
+              backgroundColor: f.color,
+              width: FLIGHT_DOT_SIZE,
+              height: FLIGHT_DOT_SIZE,
+              boxShadow: `0 0 0 4px ${f.color}33, 0 2px 8px rgba(0,0,0,0.35)`,
+            }}
             initial={{ left: f.from.x, top: f.from.y, opacity: 1, scale: 0.6 }}
-            animate={{ left: f.to.x, top: f.to.y, opacity: [1, 1, 0], scale: [0.6, 1.1, 0.4] }}
-            transition={{ duration: 0.8, ease: 'easeInOut' }}
+            animate={{
+              left: f.to.x,
+              top: f.to.y,
+              // Stays fully opaque for most of the flight — only fades in the last stretch, right
+              // before landing — instead of visibly fading through the whole middle of the trip.
+              opacity: [1, 1, 0],
+              scale: [0.6, 1.4, 0.5],
+            }}
+            transition={{
+              duration: 1,
+              ease: 'easeInOut',
+              // A nested per-property transition doesn't inherit duration/ease from the parent —
+              // without repeating them here, opacity was falling back to Framer Motion's default
+              // (much shorter) tween, fading the dot out way earlier than the rest of the flight.
+              opacity: { duration: 1, ease: 'easeInOut', times: [0, 0.8, 1] },
+            }}
             onAnimationComplete={() => {
               f.onComplete();
               setFlights(prev => prev.filter(x => x.id !== f.id));

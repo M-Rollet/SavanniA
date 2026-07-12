@@ -10,7 +10,9 @@ export function SettingsButton() {
       variant="ghost"
       size="sm"
       aria-label="Paramètres robots"
-      className="fixed top-3 right-3 z-40"
+      // Stays reachable above every modal and the guided tour's dimming overlay (z-[99999] in
+      // TourOverlay) — see the matching z-index on SettingsOverlay's Modal.Backdrop.
+      className="fixed top-3 right-3 z-[100000]"
       onPress={openSettings}
     >
       <Gear />

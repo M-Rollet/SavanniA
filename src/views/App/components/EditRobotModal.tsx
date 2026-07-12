@@ -2,6 +2,7 @@ import { Modal, useOverlayState, Button } from '@heroui/react';
 import { Pencil, Eye, Lock } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { EMPTY_ROBOT_ENTRY, getStepDef, type Criterion, type RobotEntry } from '../steps/stepDefinitions';
+import { TOUR_ADVANCE_DELAY_MS, TOUR_INTERLUDE_1 } from './TourOverlay';
 
 interface Props {
   uuid: string | null;
@@ -71,7 +72,7 @@ function ToggleRow({
 }
 
 export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
-  const { stepIndex, physicalRobotData, setPhysicalRobotData } = useScenario();
+  const { stepIndex, physicalRobotData, setPhysicalRobotData, tourStep, setTourStep } = useScenario();
   const isOpen = uuid !== null;
   const editableStep = !entryOverride && getStepDef(stepIndex).features.dataEditable;
 
@@ -85,6 +86,10 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
   });
 
   const entry = entryOverride ?? ((uuid && physicalRobotData[uuid]) || EMPTY_ROBOT_ENTRY);
+  // While the tour is walking the student through this modal (asking them to set the light, then
+  // to click Terminé), lock everything else: no backdrop/Escape/close-trigger dismissal, and the
+  // other criteria stay non-interactive so the light row is the only thing they can act on.
+  const tourLockingModal = tourStep === 6 || tourStep === 7;
 
   const setCriterion = (criterion: Criterion, value: number) => {
     if (!uuid || !editableStep || entry.lockedCriteria[criterion]) {
@@ -94,19 +99,29 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
       ...physicalRobotData,
       [uuid]: { ...entry, testResults: { ...entry.testResults, [criterion]: value } },
     });
+    if (tourStep === 6 && criterion === 'light_working') {
+      setTimeout(() => setTourStep(7), TOUR_ADVANCE_DELAY_MS);
+    }
+  };
+
+  const handleTerminate = () => {
+    onClose();
+    if (tourStep === 7) {
+      setTimeout(() => setTourStep(TOUR_INTERLUDE_1), TOUR_ADVANCE_DELAY_MS);
+    }
   };
 
   return (
     <Modal state={state}>
-      <Modal.Backdrop isDismissable>
+      <Modal.Backdrop isDismissable={!tourLockingModal} isKeyboardDismissDisabled={tourLockingModal}>
         <Modal.Container size="md">
-          <Modal.Dialog>
+          <Modal.Dialog data-tour="edit-modal">
             <Modal.Header>
               <Modal.Heading className="flex items-center gap-2">
                 {editableStep ? <Pencil width={16} height={16} /> : <Eye width={16} height={16} />}
                 {editableStep ? 'Modifier' : 'Détails'} — {label}
               </Modal.Heading>
-              <Modal.CloseTrigger />
+              {!tourLockingModal && <Modal.CloseTrigger />}
             </Modal.Header>
 
             <Modal.Body className="flex flex-col gap-4">
@@ -122,28 +137,30 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
                 value={entry.testResults.ir_working}
                 onChange={v => setCriterion('ir_working', v)}
                 options={BOOL_OPTIONS}
-                locked={!editableStep || entry.lockedCriteria.ir_working}
+                locked={!editableStep || entry.lockedCriteria.ir_working || tourStep === 6}
               />
               <ToggleRow
                 label="Bruit moteur"
                 value={entry.testResults.motor_noise}
                 onChange={v => setCriterion('motor_noise', v)}
                 options={NOISE_OPTIONS}
-                locked={!editableStep || entry.lockedCriteria.motor_noise}
+                locked={!editableStep || entry.lockedCriteria.motor_noise || tourStep === 6}
               />
               <ToggleRow
                 label="Batterie"
                 value={entry.testResults.battery_level}
                 onChange={v => setCriterion('battery_level', v)}
                 options={BATTERY_OPTIONS}
-                locked={!editableStep || entry.lockedCriteria.battery_level}
+                locked={!editableStep || entry.lockedCriteria.battery_level || tourStep === 6}
               />
             </Modal.Body>
 
             <Modal.Footer>
-              <Button variant="primary" onClick={onClose}>
-                Terminé
-              </Button>
+              <div data-tour="terminate-button">
+                <Button variant="primary" onClick={handleTerminate} isDisabled={tourStep === 6}>
+                  Terminé
+                </Button>
+              </div>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
