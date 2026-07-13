@@ -1,39 +1,48 @@
-import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
-import { ArrowRight, ArrowChevronDown, Check } from '@gravity-ui/icons';
+import { ArrowRight, Check, Star, Play } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
-import { STEP_DEFS, getStepDef, phaseForStep, PHASES } from '../steps/stepDefinitions';
+import { STEP_DEFS, getStepDef } from '../steps/stepDefinitions';
 import { hasWrongCriteria } from '../robotProfiles';
 import { TOUR_WAIT_ROW_COMPLETE } from './TourOverlay';
+import step1 from '../../../assets/step_1.png';
+import step2 from '../../../assets/step_2.png';
+import step3 from '../../../assets/step_3.png';
+import step4 from '../../../assets/step_4.png';
+import step5 from '../../../assets/step_5.png';
+import step6 from '../../../assets/step_6.png';
+import step7 from '../../../assets/step_7.png';
+import step8 from '../../../assets/step_8.png';
+
+const STEP_IMAGES: Record<number, string> = {
+  1: step1,
+  2: step2,
+  3: step3,
+  4: step4,
+  5: step5,
+  6: step6,
+  7: step7,
+  8: step8,
+};
 
 export function TimelinePanel() {
   const {
     stepIndex,
     advanceStep,
+    goToStep,
     physicalRobotData,
     activeRobotConfigs: robotConfigs,
     algorithmTree,
     treeAccuracy,
+    dataCheckFailed,
     setDataCheckFailed,
     tourStep,
+    giveUpAvailable,
   } = useScenario();
   const current = getStepDef(stepIndex);
   const canAdvance = current.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy });
   const isLastStep = stepIndex >= STEP_DEFS.length;
   const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested === true).length;
-
-  // The mission journal is a phase accordion: only the phase you're currently in is expanded, so
-  // upcoming phases aren't explained before you reach them. Entering a new phase auto-opens it.
-  const [expandedPhase, setExpandedPhase] = useState<string>(() => phaseForStep(stepIndex).id);
-  const activeStepRef = useRef<HTMLLIElement>(null);
-  useEffect(() => {
-    setExpandedPhase(phaseForStep(stepIndex).id);
-  }, [stepIndex]);
-  // Keep the active step in view inside the capped accordion.
-  useEffect(() => {
-    activeStepRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [stepIndex, expandedPhase]);
 
   // Step 1's completeness gate (canAdvance) doesn't check correctness — do that here, right before
   // moving on, so a full-but-wrong table blocks advancement with an explanation instead of letting
@@ -46,6 +55,10 @@ export function TimelinePanel() {
     advanceStep();
   };
 
+  // Once the step-1 check has failed once, keep the button disabled until every highlighted cell
+  // is actually corrected — otherwise it stayed clickable and just re-showed the same modal.
+  const blockedByDataCheck = stepIndex === 1 && dataCheckFailed && hasWrongCriteria(robotConfigs, physicalRobotData);
+
   // Live "ticks off" progress counter for the steps that have a measurable completion condition.
   const progress = (() => {
     if (stepIndex === 2 && robotConfigs.length > 0) {
@@ -57,95 +70,31 @@ export function TimelinePanel() {
     return null;
   })();
 
-  // Steps 5 (free advance) and 7 (last) have no real "objectif atteint" moment to celebrate.
-  const showCelebration = canAdvance && !isLastStep && stepIndex !== 5;
+  // The last step has no real "objectif atteint" moment to celebrate.
+  const showCelebration = canAdvance && !isLastStep;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Phase accordion — capped with its own scroll so the consigne and advance button below it
-          stay visible even when a phase with many steps is expanded. */}
-      <div className="flex flex-col gap-1 max-h-44 overflow-y-auto">
-        {PHASES.map(phase => {
-          const expanded = expandedPhase === phase.id;
-          const phaseActive = phase.steps.includes(stepIndex);
-          const phaseDone = phase.steps.every(s => s < stepIndex);
-          return (
-            <div key={phase.id} className="flex flex-col">
-              <button
-                onClick={() => setExpandedPhase(expanded ? '' : phase.id)}
-                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                  phaseActive ? phase.accentBgSoft : 'hover:bg-gray-50'
-                }`}
-              >
-                <img src={phase.icon} alt="" className="w-4 h-4 shrink-0 object-contain" />
-                <span
-                  className={`flex-1 text-xs font-semibold uppercase tracking-wide ${
-                    phaseActive ? phase.accentText : 'text-gray-400'
-                  }`}
-                >
-                  {phase.label}
-                </span>
-                {phaseDone && <Check width={12} height={12} className="text-green-500" />}
-                <ArrowChevronDown
-                  width={12}
-                  height={12}
-                  className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                />
-              </button>
-
-              {expanded && (
-                <ol className="flex flex-col gap-2 pl-3 pt-2">
-                  {phase.steps.map(stepIdx => {
-                    const def = getStepDef(stepIdx);
-                    const done = stepIdx < stepIndex;
-                    const active = stepIdx === stepIndex;
-                    return (
-                      <li key={stepIdx} ref={active ? activeStepRef : undefined} className="flex items-center gap-3">
-                        <span
-                          className={`shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-semibold transition-colors ${
-                            done
-                              ? 'bg-green-500 border-green-500 text-white'
-                              : active
-                              ? `${phase.accentBorder} ${phase.accentText}`
-                              : 'border-gray-200 text-gray-300'
-                          }`}
-                        >
-                          {done ? <Check width={12} height={12} /> : stepIdx}
-                        </span>
-                        <span
-                          className={`text-sm ${
-                            active
-                              ? 'font-semibold text-gray-800'
-                              : done
-                              ? 'text-gray-400 line-through'
-                              : 'text-gray-400'
-                          }`}
-                        >
-                          {def.label}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </div>
-          );
-        })}
-      </div>
+    <div className="flex flex-col gap-2">
+      {/* Step illustration — replaces the old phase accordion with a single image per step. */}
+      <img src={STEP_IMAGES[stepIndex]} alt={`Étape ${stepIndex}`} className="w-full h-auto rounded-lg" />
 
       {/* Consigne, split into the pedagogical "why" and the one thing to do now. */}
-      <div className="flex flex-col gap-2 border-t pt-3">
+      <div className="flex flex-col gap-2">
         <div className="flex gap-2 text-sm">
-          <span className="shrink-0 leading-5">🎯</span>
-          <span className="text-gray-600">
-            <span className="font-semibold text-gray-800">Objectif</span> — {current.objective}
+          <span className="shrink-0 h-5 inline-flex items-center gap-1 whitespace-nowrap">
+            <Star width={14} height={14} />
+            <span className="font-semibold text-gray-800">Objectif</span>
+            <span>—</span>
           </span>
+          <span className="text-gray-600">{current.objective}</span>
         </div>
         <div className="flex gap-2 text-sm">
-          <span className="shrink-0 leading-5">▶️</span>
-          <span className="text-gray-600">
-            <span className="font-semibold text-gray-800">Action</span> — {current.action}
+          <span className="shrink-0 h-5 inline-flex items-center gap-1 whitespace-nowrap">
+            <Play width={14} height={14} />
+            <span className="font-semibold text-gray-800">Action</span>
+            <span>—</span>
           </span>
+          <span className="text-gray-600">{current.action}</span>
         </div>
 
         {progress && <span className="pl-7 text-xs font-semibold text-gray-800">{progress}</span>}
@@ -166,14 +115,21 @@ export function TimelinePanel() {
       </div>
 
       {tourStep === TOUR_WAIT_ROW_COMPLETE && (
-        <p className="text-xs font-semibold text-gray-800">🎯 Termine de remplir les données de ce robot.</p>
+        <p className="text-xs font-semibold text-gray-800"><Star /> Termine de remplir les données de ce robot.</p>
       )}
 
       {!isLastStep && (
-        <Button variant="primary" size="sm" isDisabled={!canAdvance} onPress={handleAdvance} className="self-start">
-          Étape suivante
-          <ArrowRight />
-        </Button>
+        <div className="self-start flex items-center gap-2">
+          <Button variant="primary" size="sm" isDisabled={!canAdvance || blockedByDataCheck} onPress={handleAdvance}>
+            Étape suivante
+            <ArrowRight />
+          </Button>
+          {stepIndex === 6 && giveUpAvailable && (
+            <Button variant="ghost" size="sm" onPress={() => goToStep(stepIndex + 1)}>
+              Abandonner
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

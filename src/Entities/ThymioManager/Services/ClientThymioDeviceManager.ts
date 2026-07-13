@@ -94,6 +94,13 @@ export class ClientDeviceManager implements TdmClient {
     }
   };
 
+  release = async (uuid: string) => {
+    const thymio = this.nodeList.state[uuid];
+    if (thymio) {
+      await thymio.release();
+    }
+  };
+
   getRobotStatus = (uuid: string) => this.nodeList.state[uuid]?.status ?? null;
 
   getThymioList = () =>

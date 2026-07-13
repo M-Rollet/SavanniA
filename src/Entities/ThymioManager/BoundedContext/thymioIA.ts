@@ -31,4 +31,6 @@ export class ThymioIA implements IThymioIA {
   emitEvent = (uuid: string, eventName: string) => this.tdmController.emitEvent(uuid, eventName);
 
   identify = (uuid: string) => this.tdmController.identify(uuid);
+
+  release = (uuid: string) => this.tdmController.release(uuid);
 }

@@ -24,6 +24,11 @@ export interface Thymio {
   setVariables: (vars: Map<string, number[]>) => Promise<void>;
   emitEvent: (eventName: string) => Promise<void>;
   identify: () => Promise<void>;
+  /** Releases the lock taken by `initialize()`, so another `takeControl()` (e.g. after an
+   * in-app reset, without a full page reload) can re-acquire it — TDM otherwise reports this
+   * node as locked/busy forever, since the underlying connection is a page-lifetime singleton
+   * that's never itself closed by an in-app reset. */
+  release: () => Promise<void>;
 }
 
 export interface Robot {

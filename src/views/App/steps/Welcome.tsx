@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
-import { ArrowRight, ArrowLeft, Gear, CheckShape } from '@gravity-ui/icons';
+import { ArrowRight, ArrowLeft, Gear, CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { MIN_ROBOTS } from '../robotProfiles';
 import { PHASES } from './stepDefinitions';
@@ -40,8 +40,19 @@ const BRIEF_PAGES: BriefPage[] = [
     heading: 'Ta mission',
     body: [
       <>
-        Construis un programme capable de décider, tout seul, si un robot est <em>Prêt à partir</em> ou{' '}
-        <em>À réparer</em>.
+        Construis un programme capable de décider, tout seul, si un robot est
+        <br />
+        <span className="mt-2 flex items-center justify-center gap-3 font-medium text-gray-800">
+          <span className="flex items-center gap-1.5">
+            <CheckShape width={16} height={16} />
+            Prêt à partir
+          </span>
+          <span className="text-gray-600 font-normal">ou</span>
+          <span className="flex items-center gap-1.5">
+            <Ban width={16} height={16} />
+            À réparer
+          </span>
+        </span>
       </>,
       'La mission se déroule en trois phases :',
     ],
@@ -138,8 +149,9 @@ export function Welcome() {
               animate="center"
               exit="exit"
               transition={slide}
+              className="w-full max-w-2xl"
             >
-              <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full min-h-[560px] p-8 flex flex-col gap-6 overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-xl min-h-[570px] p-8 flex flex-col gap-6 overflow-hidden">
                 {/* Persists across phase changes — only the active dot moves, via layoutId, instead
                     of the whole indicator resetting or sliding away with the card content below. */}
                 <div className="flex items-center gap-2">

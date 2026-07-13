@@ -153,6 +153,12 @@ export function EditRobotModal({ uuid, label, onClose, entryOverride }: Props) {
                 options={BATTERY_OPTIONS}
                 locked={!editableStep || entry.lockedCriteria.battery_level || tourStep === 6}
               />
+              {entry.observation?.notes && (
+                <div className="flex flex-col gap-1 pt-1 border-t border-gray-100">
+                  <span className="text-sm font-medium text-gray-700">Notes du terrain</span>
+                  <p className="text-sm text-gray-500 whitespace-pre-wrap">{entry.observation.notes}</p>
+                </div>
+              )}
             </Modal.Body>
 
             <Modal.Footer>

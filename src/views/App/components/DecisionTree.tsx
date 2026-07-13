@@ -12,7 +12,6 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
-  useViewport,
   applyNodeChanges,
   Controls,
   type Node,
@@ -26,8 +25,6 @@ import '@xyflow/react/dist/style.css';
 import { RootNode, type RootNodeData } from './RootNode';
 import { DecisionNode, type DecisionNodeData } from './DecisionNode';
 import { LeafNode, type LeafNodeData, type RobotPlacement } from './LeafNode';
-import { ValidateCard, VALIDATE_WIDTH } from './ValidateCard';
-import { AlgorithmValidateModal, type AlgorithmValidateModalStatus } from './AlgorithmValidateModal';
 import { EditRobotModal } from './EditRobotModal';
 import { QUESTIONS } from './questions';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
@@ -169,7 +166,7 @@ function walkToLeaf(testResults: Partial<Record<Criterion, number>>, nodes: Node
   return node?.type === 'leaf' ? node : null;
 }
 
-// ── Algorithm mode: dataset & error-count helpers ──────────────────────
+// ── Algorithm mode: dataset & mixedness (Gini) helpers ──────────────────────
 type DatasetEntry = {
   id: string;
   label: string;
@@ -178,14 +175,40 @@ type DatasetEntry = {
   testResults: Partial<Record<Criterion, number>>;
 };
 
+/** Gini impurity of a set of entries — 0 when every entry shares the same category, up to 0.5 at
+ * an even 50/50 split (binary classification: ready vs. repair). This is the "how mixed is this
+ * group" score introduced in Step7IntroModal. */
+function giniImpurity(entries: DatasetEntry[]): number {
+  if (entries.length === 0) {
+    return 0;
+  }
+  const pReady = entries.filter(e => e.category === 'ready').length / entries.length;
+  const pRepair = 1 - pReady;
+  return 1 - (pReady * pReady + pRepair * pRepair);
+}
+
+/** Weighted-average Gini impurity across a question's two resulting branches — the score a
+ * decision tree minimizes when choosing which question to ask at a node. */
+function giniForQuestion(entries: DatasetEntry[], questionId: string): number {
+  const yes = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'yes');
+  const no = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'no');
+  const total = yes.length + no.length;
+  if (total === 0) {
+    return 0;
+  }
+  return (yes.length / total) * giniImpurity(yes) + (no.length / total) * giniImpurity(no);
+}
+
 /**
  * Forces the two branches of a question to opposite categories and picks whichever of the two
- * possible opposite-assignments (yes=ready/no=repair vs. yes=repair/no=ready) yields fewer errors.
+ * possible opposite-assignments (yes=ready/no=repair vs. yes=repair/no=ready) yields fewer errors
+ * — this is just the majority-vote label for each branch, independent of how the question itself
+ * gets chosen (see giniForQuestion above for that).
  */
 function resolveBranchCategories(
   yesEntries: DatasetEntry[],
   noEntries: DatasetEntry[]
-): { yesReady: boolean; noReady: boolean; errorCount: number } {
+): { yesReady: boolean; noReady: boolean } {
   const readyCount = (list: DatasetEntry[]) => list.filter(e => e.category === 'ready').length;
   const yesReadyCount = readyCount(yesEntries);
   const yesRepairCount = yesEntries.length - yesReadyCount;
@@ -195,16 +218,7 @@ function resolveBranchCategories(
   const errorsA = yesRepairCount + noReadyCount; // yes=ready, no=repair
   const errorsB = yesReadyCount + noRepairCount; // yes=repair, no=ready
 
-  if (errorsA <= errorsB) {
-    return { yesReady: true, noReady: false, errorCount: errorsA };
-  }
-  return { yesReady: false, noReady: true, errorCount: errorsB };
-}
-
-function errorCountForQuestion(entries: DatasetEntry[], questionId: string): number {
-  const yes = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'yes');
-  const no = entries.filter(e => answerFromTestResults(questionId, e.testResults) === 'no');
-  return resolveBranchCategories(yes, no).errorCount;
+  return errorsA <= errorsB ? { yesReady: true, noReady: false } : { yesReady: false, noReady: true };
 }
 
 function majorityCategory(entries: DatasetEntry[]): boolean {
@@ -443,7 +457,9 @@ function useTreeMutations(
     [setCenter, setEdges, animateToNodes]
   );
 
-  // Adds a bare (unconfigured) decision node as the tree's very first node, under root.
+  // Adds a bare (unconfigured) decision node as the tree's very first node, under root. Returns
+  // the new node's id (used by algorithm mode's preview to seed it straight into the auto-build
+  // queue — see AlgorithmCanvas's previewMode).
   const addFirstChild = useCallback(() => {
     const newId = crypto.randomUUID();
     const nextEdges = [
@@ -463,6 +479,7 @@ function useTreeMutations(
       setEdges(nextEdges);
       animateToNodes(laid, overrides);
     }
+    return newId;
   }, [edgesRef, nodesRef, focusThenAnimate, animateToNodes, setEdges, focusOnMutate]);
 
   // Removes a node and its whole subtree, panning to where it was before relaying out.
@@ -503,44 +520,13 @@ function useTreeMutations(
 // Algorithm mode: auto-build cadence + Valider overlay
 // ════════════════════════════════════════════════════════════════════════
 
-const AUTO_STEP_MS = 350;
-const AUTO_SETTLE_MS = 400;
-const AUTO_FINALIZE_MS = 500;
-
-type PendingValidation = { nodeId: string; x: number; y: number; onValidate: () => void };
-
-/**
- * Renders Valider buttons as plain HTML, positioned by hand-replicating xyflow's own
- * viewport transform (translate + scale) — kept outside `.react-flow__pane` so its clicks
- * are never intercepted by the pane's native pan/drag gesture recognizer.
- */
-function ValidateOverlay({ targets }: { targets: PendingValidation[] }) {
-  const { x, y, zoom } = useViewport();
-
-  if (targets.length === 0) {
-    return null;
-  }
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          transform: `translate(${x}px, ${y}px) scale(${zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        {targets.map(t => (
-          <div key={t.nodeId} className="absolute pointer-events-auto" style={{ left: t.x, top: t.y }}>
-            <ValidateCard onValidate={t.onValidate} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const AUTO_STEP_MS = 700;
+const AUTO_SETTLE_MS = 600;
+// Comfortably longer than the pan/zoom triggered when a node's children appear (fitView's own
+// ANIM_DURATION+60 pre-delay plus its 400ms transition, ~760ms total — see the boundsKey effect
+// below) — otherwise the next node starts flashing candidate questions while the camera's still
+// mid-move from the previous one.
+const AUTO_FINALIZE_MS = 1000;
 
 // ════════════════════════════════════════════════════════════════════════
 // Manual tree canvas — steps 2 / 4 / 5: user builds/edits the tree freely
@@ -558,6 +544,8 @@ type ManualTreeProps = {
   testing: boolean;
   /** Whether the tree structure (nodes, questions, decisions) can be edited. Defaults to true. */
   editable?: boolean;
+  /** Whether nodes can be deleted — subset of `editable`. Defaults to true. */
+  deletable?: boolean;
   onValidationChange?: (errors: ValidationError[]) => void;
   onActiveQuestionChange?: (questionId: string | null) => void;
   /** Fired once when the active test path reaches a leaf node, with that leaf's decision
@@ -567,17 +555,22 @@ type ManualTreeProps = {
   robotPlacement?: boolean;
   /** Reports how many tested+observed robots the current tree classifies correctly, whenever it changes. */
   onClassificationChange?: (stats: { total: number; correct: number }) => void;
+  /** Fired on every structural edit — a question change or a node deletion. Does NOT fire for leaf
+   * decision changes (true/false toggles) or adding a node. */
+  onStructuralEdit?: () => void;
 };
 
 const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(function ManualTreeCanvas(
   {
     testing,
     editable = true,
+    deletable = true,
     robotPlacement = false,
     onValidationChange,
     onActiveQuestionChange,
     onLeafReached,
     onClassificationChange,
+    onStructuralEdit,
   },
   ref
 ) {
@@ -586,6 +579,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     activeRobotConfigs: robotConfigs,
     physicalRobotData,
     externalDataset,
+    newRobotsDataset,
     setManualTree,
     stepIndex,
   } = useScenario();
@@ -681,6 +675,16 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     setEdges
   );
 
+  // Wraps the raw mutation so node deletion counts as a "structural edit" — kept separate from
+  // deleteNode itself since that's shared with algorithm mode, which doesn't report this.
+  const handleDeleteNode = useCallback(
+    (nodeId: string) => {
+      onStructuralEdit?.();
+      deleteNode(nodeId);
+    },
+    [deleteNode, onStructuralEdit]
+  );
+
   // Mirror the tree as an AlgoTree in context so other components (e.g. the data table) can
   // classify robots without depending on this component's internal node/edge representation.
   useEffect(() => {
@@ -706,10 +710,10 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
 
   // ── Robot info ────────────────────────────────────────────
   const robotInfo = useMemo(() => {
-    // Steps that place every robot on the tree (4/5) show an aggregate count instead of a single
-    // selected robot — there's no per-robot selector on this tab for those steps anymore.
+    // Steps that place every robot on the tree (4/5/6) show an aggregate count instead of a
+    // single selected robot — there's no per-robot selector on this tab for those steps anymore.
     if (stepFeatures.robotPlacementOnTree) {
-      const count = robotConfigs.length + externalDataset.length;
+      const count = robotConfigs.length + newRobotsDataset.length + externalDataset.length;
       return { color: '#a1a1a1', label: `${count} robot${count > 1 ? 's' : ''}`, colorId: '' };
     }
     const config = robotConfigs.find(r => r.uuid === controledRobot);
@@ -722,7 +726,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       label: colorDef?.label ?? config.color,
       colorId: config.color,
     };
-  }, [stepFeatures.robotPlacementOnTree, controledRobot, robotConfigs, externalDataset]);
+  }, [stepFeatures.robotPlacementOnTree, controledRobot, robotConfigs, newRobotsDataset, externalDataset]);
 
   // ── Robot placement: which leaf does each tested robot land on? ──
   const { leafPlacements, classificationStats } = useMemo(() => {
@@ -763,11 +767,17 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
       addPlacement(entry, r.uuid, colorDef?.hex ?? '#a1a1a1', colorDef?.label ?? r.color, true);
     }
+    // Stand-ins for the 5th/6th core robots (see ScenarioContext's newRobotsDataset) — unlike
+    // externalDataset below, these DO count toward stats: the "De nouveaux robots" step's
+    // canAdvance needs them to, whether or not that robot slot has real hardware behind it.
+    for (const e of newRobotsDataset) {
+      addPlacement(e, e.id, '#94a3b8', e.label, true);
+    }
     for (const e of externalDataset) {
       addPlacement(e, e.id, '#94a3b8', e.label, false);
     }
     return { leafPlacements: map, classificationStats: stats };
-  }, [robotPlacement, robotConfigs, physicalRobotData, externalDataset, nodes, edges]);
+  }, [robotPlacement, robotConfigs, physicalRobotData, newRobotsDataset, externalDataset, nodes, edges]);
 
   useEffect(() => {
     if (robotPlacement) {
@@ -801,9 +811,13 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     [focusThenAnimate]
   );
 
-  const onChangeQuestion = useCallback((nodeId: string, questionId: string) => {
-    setNodes(nodesRef.current.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, questionId } } : n)));
-  }, []);
+  const onChangeQuestion = useCallback(
+    (nodeId: string, questionId: string) => {
+      onStructuralEdit?.();
+      setNodes(nodesRef.current.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, questionId } } : n)));
+    },
+    [onStructuralEdit]
+  );
 
   const onChangeDecision = useCallback((nodeId: string, decision: boolean) => {
     setNodes(nodesRef.current.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, decision } } : n)));
@@ -972,9 +986,10 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
             onAddChild: addChild,
             onChangeQuestion,
             onSetActiveHandle,
-            onDelete: deleteNode,
+            onDelete: handleDeleteNode,
             testing: showActivePath,
             editable,
+            deletable,
             activeHandle: activeHandles.get(node.id) ?? null,
             isOnActivePath: activePath.has(node.id),
           };
@@ -993,9 +1008,10 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
             highlighted: highlightedNodeId === node.id,
             testing: showActivePath,
             editable,
+            deletable,
             placements: leafPlacements.get(node.id) ?? [],
             onChangeDecision,
-            onDelete: deleteNode,
+            onDelete: handleDeleteNode,
             onPlacementClick,
           };
           return {
@@ -1013,7 +1029,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       robotInfo,
       addFirstChild,
       addChild,
-      deleteNode,
+      handleDeleteNode,
       onChangeQuestion,
       onSetActiveHandle,
       onChangeDecision,
@@ -1021,6 +1037,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       testing,
       showActivePath,
       editable,
+      deletable,
       activeHandles,
       activePath,
       highlightedNodeId,
@@ -1084,33 +1101,25 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
 });
 
 // ════════════════════════════════════════════════════════════════════════
-// Algorithm tree canvas — step 6: the tree is built via the guided
+// Algorithm tree canvas — step 7: the tree is built via the guided
 // question → auto-categorize → validate flow, ending in an automatic build.
 // ════════════════════════════════════════════════════════════════════════
 
-function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
-  const { setAlgorithmTree } = useScenario();
+function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEntry[]; previewMode?: boolean }) {
+  const { setAlgorithmTree, algorithmBuildArmed } = useScenario();
 
   const [nodes, setNodes] = useState<Node[]>(() => [{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [autoBuildQueue, setAutoBuildQueue] = useState<string[]>([]);
-  const [validateModal, setValidateModal] = useState<{ nodeId: string; status: AlgorithmValidateModalStatus } | null>(
-    null
-  );
-  // Per-node set of question ids the user has already tried (selected) at least once —
-  // the Valider button only shows once every candidate has been tried.
-  const [triedIds, setTriedIds] = useState<Map<string, Set<string>>>(new Map());
   const [viewingRobot, setViewingRobot] = useState<ViewingRobot | null>(null);
 
   const nodesRef = useRef(nodes);
   const edgesRef = useRef(edges);
   const datasetRef = useRef(dataset);
-  const validateModalRef = useRef(validateModal);
   const autoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   nodesRef.current = nodes;
   edgesRef.current = edges;
   datasetRef.current = dataset;
-  validateModalRef.current = validateModal;
 
   const { animateToNodes, addFirstChild, deleteNode, fitView } = useTreeMutations(
     nodesRef,
@@ -1119,6 +1128,21 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
     setEdges,
     false
   );
+
+  // The whole tree always builds itself automatically now — no manual "+" to start, no picking
+  // the first questions by hand. Seed the very first decision node straight into the auto-build
+  // queue as soon as the tree is empty (both on first mount and after a dataset change resets it),
+  // for both the real step-7 canvas and Step7IntroModal's previewMode demo alike. Gated on
+  // algorithmBuildArmed (set once Step7IntroModal's "Construire" is pressed) so the real canvas —
+  // mounted behind that modal the whole time it's open — never starts building itself silently in
+  // the background while the student is still reading through the intro.
+  useEffect(() => {
+    if (edges.length > 0 || !algorithmBuildArmed) {
+      return;
+    }
+    const id = addFirstChild();
+    setAutoBuildQueue([id]);
+  }, [edges.length, addFirstChild, algorithmBuildArmed]);
 
   const onPlacementClick = useCallback(
     (uuid: string) => {
@@ -1151,11 +1175,13 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
       setNodes([{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
       setEdges([]);
       setAutoBuildQueue([]);
-      setValidateModal(null);
-      setTriedIds(new Map());
     }
   }, [datasetKey]);
 
+  // Now that the real (non-preview) canvas no longer pre-builds itself in the background while
+  // Step7IntroModal is still open (see algorithmBuildArmed above), it's the previewMode demo —
+  // mounted right as "Construire" is pressed — that actually performs the build, so it must write
+  // its result to context too instead of discarding it.
   useEffect(() => {
     const rootEdge = edges.find(e => e.source === 'root' && e.sourceHandle === 'out');
     setAlgorithmTree(rootEdge ? toAlgoTree(rootEdge.target, nodes, edges) : { type: 'pending' });
@@ -1210,28 +1236,20 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
         });
         setNodes(nextNodes);
       }
-
-      setTriedIds(prev => {
-        const next = new Map(prev);
-        const set = new Set(next.get(nodeId) ?? []);
-        set.add(questionId);
-        next.set(nodeId, set);
-        return next;
-      });
     },
     [animateToNodes]
   );
 
-  // ── Validate a node: locks it in, converts impure leaves back into fresh decision nodes ──
+  // ── Locks a node in and converts its impure leaf children into fresh decision nodes, queued
+  //    for the auto-build cycle. ──
   const resolveChildren = useCallback(
-    (nodeId: string, forceAuto: boolean): string[] => {
+    (nodeId: string): string[] => {
       const currentNodes = nodesRef.current;
       const currentEdges = edgesRef.current;
-      const depth = getAncestorDecisionCount(nodeId, currentEdges) + 1;
       const yesEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'yes');
       const noEdge = currentEdges.find(e => e.source === nodeId && e.sourceHandle === 'no');
 
-      let nextNodes = currentNodes.map(n => (n.id === nodeId ? { ...n, data: { ...n.data, validated: true } } : n));
+      let nextNodes = currentNodes;
       const toQueue: string[] = [];
 
       for (const edge of [yesEdge, noEdge]) {
@@ -1244,13 +1262,9 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
           continue; // keep as leaf, already correctly categorized
         }
         nextNodes = nextNodes.map(n =>
-          n.id === leafId
-            ? { id: leafId, type: 'decision', position: n.position, data: { questionId: null, validated: false } }
-            : n
+          n.id === leafId ? { id: leafId, type: 'decision', position: n.position, data: { questionId: null } } : n
         );
-        if (forceAuto || depth + 1 >= 3) {
-          toQueue.push(leafId);
-        }
+        toQueue.push(leafId);
       }
 
       animateToNodes(layoutTree(nextNodes, currentEdges));
@@ -1259,56 +1273,10 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
     [animateToNodes]
   );
 
-  const handleValidate = useCallback((nodeId: string) => {
-    const currentNodes = nodesRef.current;
-    const currentEdges = edgesRef.current;
-    const node = currentNodes.find(n => n.id === nodeId);
-    if (!node || node.type !== 'decision' || !node.data.questionId) {
-      return;
-    }
-    const entries = computeEntriesForNode(nodeId, currentNodes, currentEdges, datasetRef.current);
-    const usedIds = getAncestorQuestionIds(nodeId, currentNodes, currentEdges);
-    const candidates = QUESTIONS.filter(q => !usedIds.includes(q.id));
-    const currentError = errorCountForQuestion(entries, node.data.questionId as string);
-    const minError =
-      candidates.length > 0 ? Math.min(...candidates.map(q => errorCountForQuestion(entries, q.id))) : currentError;
-
-    if (currentError > minError) {
-      setValidateModal({ nodeId, status: 'reject' });
-      return;
-    }
-    const depth = getAncestorDecisionCount(nodeId, currentEdges) + 1;
-    setValidateModal({ nodeId, status: depth >= 2 ? 'complete' : 'success' });
-  }, []);
-
-  // Applied once the user dismisses the success/complete modal — actually locks the question
-  // in and converts impure branches into fresh (or auto-queued) decision nodes.
-  const handleConfirmValidate = useCallback(() => {
-    const current = validateModalRef.current;
-    setValidateModal(null);
-    if (current && current.status !== 'reject') {
-      const toQueue = resolveChildren(current.nodeId, false);
-      if (toQueue.length > 0) {
-        setAutoBuildQueue(q => [...q, ...toQueue]);
-      }
-    }
-  }, [resolveChildren]);
-
-  const handleCloseValidateModal = useCallback(() => {
-    setValidateModal(null);
-  }, []);
-
   const handleDeleteNode = useCallback(
     (nodeId: string) => {
       deleteNode(nodeId, removedIds => {
         setAutoBuildQueue(q => q.filter(id => !removedIds.has(id)));
-        setTriedIds(prev => {
-          const next = new Map(prev);
-          for (const id of removedIds) {
-            next.delete(id);
-          }
-          return next;
-        });
       });
     },
     [deleteNode]
@@ -1358,7 +1326,7 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
               return;
             }
             const best = [...candidates].sort(
-              (a, b) => errorCountForQuestion(entries, a.id) - errorCountForQuestion(entries, b.id)
+              (a, b) => giniForQuestion(entries, a.id) - giniForQuestion(entries, b.id)
             )[0];
             applyQuestionToNode(nodeId, best.id);
             timers.push(
@@ -1366,7 +1334,7 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
                 if (cancelled) {
                   return;
                 }
-                const toQueue = resolveChildren(nodeId, true);
+                const toQueue = resolveChildren(nodeId);
                 setAutoBuildQueue(q => [...q.slice(1), ...toQueue]);
               }, AUTO_FINALIZE_MS)
             );
@@ -1421,9 +1389,7 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
   }, [boundsKey, fitView]);
 
   // ── Enrich nodes for rendering ──────────────────────────────
-  const { enrichedNodes, pendingValidations } = useMemo(() => {
-    const isAutoQueued = (id: string) => autoBuildQueue.includes(id);
-
+  const enrichedNodes = useMemo(() => {
     const result: Node[] = nodes.map(node => {
       if (node.type === 'root') {
         const d: RootNodeData = {
@@ -1431,9 +1397,9 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
           robotLabel: '',
           isMulti: true,
           hasChild: edges.some(e => e.source === 'root'),
-          onAddFirstChild: addFirstChild,
+          onAddFirstChild: noop,
           testing: false,
-          editable: true,
+          editable: false,
           highlighted: false,
         };
         return {
@@ -1445,15 +1411,12 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
       }
       if (node.type === 'decision') {
         const depth = getAncestorDecisionCount(node.id, edges) + 1;
-        const validated = node.data.validated === true;
-        const auto = isAutoQueued(node.id);
-        const editable = !validated && !auto && depth <= 2;
         const questionId = node.data.questionId as string | null;
-        // Only shown for the node currently being chosen — hidden once locked in.
-        const errorBadge =
-          !validated && questionId
-            ? errorCountForQuestion(computeEntriesForNode(node.id, nodes, edges, dataset), questionId)
-            : undefined;
+        // Shown on every question, locked in or not — not just the one currently being chosen —
+        // so the whole tree keeps its Gini scores visible as it grows.
+        const giniBadge = questionId
+          ? giniForQuestion(computeEntriesForNode(node.id, nodes, edges, dataset), questionId)
+          : undefined;
         const d: DecisionNodeData = {
           questionId,
           // Always reported as "used" — algorithm mode auto-creates both branches, no manual add.
@@ -1463,14 +1426,15 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
           ancestorCount: depth - 1,
           highlighted: false,
           onAddChild: noop,
-          onChangeQuestion: (id, qId) => applyQuestionToNode(id, qId),
+          onChangeQuestion: noop,
           onSetActiveHandle: noop,
           onDelete: handleDeleteNode,
           testing: false,
-          editable,
+          editable: false,
+          deletable: true,
           activeHandle: null,
           isOnActivePath: false,
-          errorBadge,
+          giniBadge,
         };
         return {
           ...node,
@@ -1495,6 +1459,7 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
           testing: false,
           // Categorization is always automatic in algorithm mode — never user-editable.
           editable: false,
+          deletable: true,
           placements,
           onChangeDecision: noop,
           onDelete: handleDeleteNode,
@@ -1510,48 +1475,13 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
       return node;
     });
 
-    // Pending "Valider" targets next to every in-progress decision node — only once every
-    // candidate question available at that node has been tried at least once.
-    const validations: PendingValidation[] = [];
-    for (const node of nodes) {
-      if (node.type !== 'decision' || node.data.validated || isAutoQueued(node.id) || !node.data.questionId) {
-        continue;
-      }
-      const depth = getAncestorDecisionCount(node.id, edges) + 1;
-      if (depth > 2) {
-        continue;
-      }
-      const usedIds = getAncestorQuestionIds(node.id, nodes, edges);
-      const candidates = QUESTIONS.filter(q => !usedIds.includes(q.id));
-      const tried = triedIds.get(node.id) ?? new Set<string>();
-      if (!candidates.every(q => tried.has(q.id))) {
-        continue;
-      }
-      validations.push({
-        nodeId: node.id,
-        x: node.position.x + getNodeWidth('decision') / 2 - VALIDATE_WIDTH / 2,
-        y: node.position.y + 105,
-        onValidate: () => handleValidate(node.id),
-      });
-    }
-
-    return { enrichedNodes: result, pendingValidations: validations };
-  }, [
-    nodes,
-    edges,
-    dataset,
-    autoBuildQueue,
-    triedIds,
-    applyQuestionToNode,
-    addFirstChild,
-    handleDeleteNode,
-    onPlacementClick,
-    handleValidate,
-    noop,
-  ]);
+    return result;
+  }, [nodes, edges, dataset, handleDeleteNode, onPlacementClick, noop]);
 
   return (
-    <div className="w-full h-full relative">
+    // Preview mode is a hands-off demo: no clicking into the dropdown, delete buttons, or pan/zoom
+    // controls — just watch the auto-build cycle run.
+    <div className="w-full h-full relative" style={previewMode ? { pointerEvents: 'none' } : undefined}>
       <ReactFlow
         nodes={enrichedNodes}
         edges={edges}
@@ -1561,27 +1491,27 @@ function AlgorithmCanvas({ dataset }: { dataset: DatasetEntry[] }) {
         defaultEdgeOptions={{ selectable: false, style: { stroke: '#808080', strokeWidth: 1.5 } }}
         fitView
         fitViewOptions={{ padding: 0.3, maxZoom: 1 }}
+        // The auto-build often grows the tree wider/deeper than the default 0.5 floor can fit —
+        // without a lower floor, fitView (and the zoom-out control) get stuck clipping the tree's
+        // outer branches with no way to zoom out far enough to see or pan to them.
+        minZoom={0.1}
       >
-        <Controls />
+        {!previewMode && <Controls />}
       </ReactFlow>
-      <ValidateOverlay targets={pendingValidations} />
-      <AlgorithmValidateModal
-        status={validateModal?.status ?? null}
-        onClose={handleCloseValidateModal}
-        onConfirm={handleConfirmValidate}
-      />
-      <EditRobotModal
-        uuid={viewingRobot?.uuid ?? null}
-        label={viewingRobot?.label ?? ''}
-        entryOverride={viewingRobot?.entryOverride}
-        onClose={() => setViewingRobot(null)}
-      />
+      {!previewMode && (
+        <EditRobotModal
+          uuid={viewingRobot?.uuid ?? null}
+          label={viewingRobot?.label ?? ''}
+          entryOverride={viewingRobot?.entryOverride}
+          onClose={() => setViewingRobot(null)}
+        />
+      )}
     </div>
   );
 }
 
-function AlgorithmTreeCanvas() {
-  const { robotConfigs, physicalRobotData, externalDataset } = useScenario();
+function AlgorithmTreeCanvas({ previewMode = false }: { previewMode?: boolean }) {
+  const { robotConfigs, physicalRobotData, newRobotsDataset, externalDataset } = useScenario();
 
   const dataset: DatasetEntry[] = [
     ...robotConfigs.flatMap((r): DatasetEntry[] => {
@@ -1600,6 +1530,13 @@ function AlgorithmTreeCanvas() {
         },
       ];
     }),
+    // Stand-ins for the 5th/6th core robots (see ScenarioContext's newRobotsDataset) — folded in
+    // here too so "avec 6 robots" (this step's intro) holds even without 6 physical units.
+    ...newRobotsDataset.flatMap((e): DatasetEntry[] =>
+      e.observation
+        ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category: e.observation.category }]
+        : []
+    ),
     ...externalDataset.flatMap((e): DatasetEntry[] =>
       e.observation
         ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category: e.observation.category }]
@@ -1615,7 +1552,7 @@ function AlgorithmTreeCanvas() {
     );
   }
 
-  return <AlgorithmCanvas dataset={dataset} />;
+  return <AlgorithmCanvas dataset={dataset} previewMode={previewMode} />;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1623,18 +1560,25 @@ function AlgorithmTreeCanvas() {
 // ════════════════════════════════════════════════════════════════════════
 
 export type DecisionTreeProps = {
-  /** 'manual' (default): free-form editing + robot testing (steps 2/4/5).
-   *  'algorithm': guided question → auto-categorize → validate flow (step 6). */
+  /** 'manual' (default): free-form editing + robot testing (steps 2/4/5/6).
+   *  'algorithm': guided question → auto-categorize → validate flow (step 7). */
   mode?: 'manual' | 'algorithm';
+  /** 'algorithm' mode only: skips the interactive 2-level manual phase and auto-builds the whole
+   * tree hands-off, using the real dataset — Step7IntroModal's live preview of the algorithm. */
+  previewMode?: boolean;
 } & Partial<ManualTreeProps>;
 
 export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
-  { mode = 'manual', ...manualProps },
+  { mode = 'manual', previewMode, ...manualProps },
   ref
 ) {
   return (
     <ReactFlowProvider key={mode}>
-      {mode === 'algorithm' ? <AlgorithmTreeCanvas /> : <ManualTreeCanvas ref={ref} testing={false} {...manualProps} />}
+      {mode === 'algorithm' ? (
+        <AlgorithmTreeCanvas previewMode={previewMode} />
+      ) : (
+        <ManualTreeCanvas ref={ref} testing={false} {...manualProps} />
+      )}
     </ReactFlowProvider>
   );
 });

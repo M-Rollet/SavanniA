@@ -57,16 +57,22 @@ type ScenarioState = {
    * anything student-facing — robot selection, table rows, terrain cards, etc. robotConfigs
    * itself stays the full list for admin purposes (SettingsOverlay) and persistence. */
   activeRobotConfigs: RobotConfig[];
-  /** Map of robot UUID → team assignment. Empty until set via the team-switch modal (step 4+). */
+  /** Map of robot UUID → team assignment. Empty until set via the team-switch modal (step 6+). */
   robotTeams: Record<string, RobotTeam>;
   setRobotTeams: (teams: Record<string, RobotTeam>) => void;
   /** Test results & terrain observations for real robots, keyed by Thymio UUID. */
   physicalRobotData: Record<string, RobotEntry>;
   setPhysicalRobotData: (data: Record<string, RobotEntry>) => void;
-  /** Injected non-physical robot dataset (step 5+), kept separate to avoid UUID collisions. */
+  /** Injected non-physical robot dataset ("Données externes" step), kept separate to avoid UUID
+   * collisions. */
   externalDataset: ExternalRobotEntry[];
   setExternalDataset: (data: ExternalRobotEntry[]) => void;
-  /** Decision tree built step-by-step in algorithm mode (step 6). */
+  /** Stand-ins for the 5th/6th core robots at the "De nouveaux robots" step, used only when that
+   * slot has no real physically-configured robot (see the pre-fill effect in SoftwareMain.tsx).
+   * Kept separate from externalDataset so the two datasets can't clobber each other. */
+  newRobotsDataset: ExternalRobotEntry[];
+  setNewRobotsDataset: (data: ExternalRobotEntry[]) => void;
+  /** Decision tree built step-by-step in algorithm mode (step 7). */
   algorithmTree: AlgoTree | null;
   setAlgorithmTree: (tree: AlgoTree | null) => void;
   /** Current manually-edited tree (steps 2/4/5), mirrored here so other components (e.g. the data table) can classify robots without depending on the tree component itself. */
@@ -99,10 +105,51 @@ type ScenarioState = {
    * DecisionTreeIntroModal instead of StepIntroModal). */
   tour2Seen: boolean;
   setTour2Seen: (seen: boolean) => void;
+  /** Same as tourSeen, for the step-4 guided tour of editing the tree (started from
+   * ReunionModal's "Améliorer l'arbre" button). */
+  tour3Seen: boolean;
+  setTour3Seen: (seen: boolean) => void;
+  /** Same as tourSeen, for the step-5 guided popover about deleting a leaf to add a new question
+   * (started from StepIntroModal, same as the step-1 tour). */
+  tour4Seen: boolean;
+  setTour4Seen: (seen: boolean) => void;
+  /** True once step 5's intro modal has been dismissed — gates SoftwareMain's "new robots arrive"
+   * pre-fill effect, so their rows appear (and fly in) right after the modal closes instead of
+   * silently existing before the student ever sees it. Persisted so a reload past step 5 doesn't
+   * strand the data ungated (the intro itself never re-shows once seen). */
+  newRobotsArmed: boolean;
+  setNewRobotsArmed: (armed: boolean) => void;
+  /** Count of structural tree edits (question changes + node deletions — not leaf decision
+   * changes) since step 6's TreeDifficultyModal was last armed. Reset on entering step 6 and on
+   * "Je continue à essayer". */
+  treeEditCount: number;
+  setTreeEditCount: (count: number) => void;
+  /** True once TreeDifficultyModal has been dismissed via "Je continue à essayer" at least once
+   * this step-6 visit — reveals the persistent "Abandonner" button next to "Étape suivante". */
+  giveUpAvailable: boolean;
+  setGiveUpAvailable: (available: boolean) => void;
+  /** True while Step7IntroModal's live auto-build demo is playing — SoftwareMain swaps its real
+   * (interactive) algorithm-mode tree panel for a throwaway preview instance showing the same
+   * position/size in the actual window layout, so the demo isn't cramped inside modal chrome and
+   * never touches the real algorithmTree the student goes on to build by hand. */
+  step7DemoActive: boolean;
+  setStep7DemoActive: (active: boolean) => void;
+  /** True once step 7's intro modal has had its "Construire" button pressed (at least once,
+   * persisted) — gates the algorithm-mode tree's auto-build so it never starts, even silently in
+   * the background, while the student is still reading through the intro modal. Reset on a full
+   * app reset only, so revisiting step 7/8 later rebuilds automatically without re-showing the
+   * intro. */
+  algorithmBuildArmed: boolean;
+  setAlgorithmBuildArmed: (armed: boolean) => void;
   /** True while DataTable's EditRobotModal is open — the guided tour waits for it to close before
    * showing the next popover, so it never renders behind that modal. */
   editRobotModalOpen: boolean;
   setEditRobotModalOpen: (open: boolean) => void;
+  /** True while any DecisionNode's question dropdown is open. Step 6's TreeDifficultyModal waits
+   * for it to close before popping up, so the "give up?" modal never opens on top of an open
+   * dropdown (which would otherwise render behind the modal backdrop, half-hidden). */
+  questionDropdownOpen: boolean;
+  setQuestionDropdownOpen: (open: boolean) => void;
   /** Mirrors SoftwareMain's local "testing" state — true while a robot is actively being run
    * through the tree. The step-2 guided tour hides its own highlight while this is true, so the
    * tree's own pan/animation is fully visible instead of fighting the tour's dimmed overlay. */
@@ -138,6 +185,10 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     {}
   );
   const [externalDataset, setExternalDataset] = useLocalStorage<ExternalRobotEntry[]>('scenario:externalDataset', []);
+  const [newRobotsDataset, setNewRobotsDataset] = useLocalStorage<ExternalRobotEntry[]>(
+    'scenario:newRobotsDataset',
+    []
+  );
   const [algorithmTree, setAlgorithmTree] = useState<AlgoTree | null>(null);
   const [manualTree, setManualTree] = useState<AlgoTree | null>(null);
   const [treeAccuracy, setTreeAccuracy] = useState<TreeAccuracy | null>(null);
@@ -147,7 +198,18 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [tourStep, setTourStep] = useLocalStorage<number>('scenario:tourStep', 0);
   const [tourSeen, setTourSeen] = useLocalStorage<boolean>('scenario:tourSeen', false);
   const [tour2Seen, setTour2Seen] = useLocalStorage<boolean>('scenario:tour2Seen', false);
+  const [tour3Seen, setTour3Seen] = useLocalStorage<boolean>('scenario:tour3Seen', false);
+  const [tour4Seen, setTour4Seen] = useLocalStorage<boolean>('scenario:tour4Seen', false);
+  const [newRobotsArmed, setNewRobotsArmed] = useLocalStorage<boolean>('scenario:newRobotsArmed', false);
+  const [treeEditCount, setTreeEditCount] = useState(0);
+  const [giveUpAvailable, setGiveUpAvailable] = useState(false);
+  const [step7DemoActive, setStep7DemoActive] = useState(false);
+  const [algorithmBuildArmed, setAlgorithmBuildArmed] = useLocalStorage<boolean>(
+    'scenario:algorithmBuildArmed',
+    false
+  );
   const [editRobotModalOpen, setEditRobotModalOpen] = useState(false);
+  const [questionDropdownOpen, setQuestionDropdownOpen] = useState(false);
   const [robotTestActive, setRobotTestActive] = useState(false);
   const [testResultRobot, setTestResultRobot] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -270,18 +332,31 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(() => {
     clearSavedTree();
-    // Owned by StepIntroModal / ReunionModal / DecisionTreeIntroModal's useLocalStorage; safe to
-    // clear here because resetting to the welcome screen unmounts SoftwareMain, so the modals
-    // re-read storage on next mount.
+    // The `user` connection is a page-lifetime singleton, never itself torn down by an in-app
+    // reset — without releasing each robot's lock here, TDM keeps reporting it as busy forever,
+    // so the next SoftwareMain mount's poll loop never sees it as 'available' again and never
+    // re-takes control (which is what re-wires live sensor updates). Fire-and-forget: nothing
+    // here needs to wait on the network round-trip.
+    robotConfigs.forEach(({ uuid }) => {
+      user.release(uuid).catch((err: unknown) => {
+        console.warn('[ScenarioContext] release failed for', uuid, err);
+      });
+    });
+    // Owned by StepIntroModal / ReunionModal / DecisionTreeIntroModal / ExternalDataIntroModal /
+    // Step7IntroModal's useLocalStorage; safe to clear here because resetting to the welcome
+    // screen unmounts SoftwareMain, so the modals re-read storage on next mount.
     localStorage.removeItem('scenario:introSeen');
     localStorage.removeItem('scenario:reunionSeen');
     localStorage.removeItem('scenario:dtIntroSeen');
+    localStorage.removeItem('scenario:externalDataReadySeen');
+    localStorage.removeItem('scenario:step7IntroSeen');
     setStepIndex(0);
     setControledRobot('');
     setRobotConfigs([]);
     setRobotTeams({});
     setPhysicalRobotData({});
     setExternalDataset([]);
+    setNewRobotsDataset([]);
     setAlgorithmTree(null);
     setManualTree(null);
     setTreeAccuracy(null);
@@ -289,17 +364,33 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setTourStep(0);
     setTourSeen(false);
     setTour2Seen(false);
+    setTour3Seen(false);
+    setTour4Seen(false);
+    setNewRobotsArmed(false);
+    setTreeEditCount(0);
+    setGiveUpAvailable(false);
+    setStep7DemoActive(false);
+    setAlgorithmBuildArmed(false);
     setEditRobotModalOpen(false);
   }, [
+    robotConfigs,
     setStepIndex,
     setControledRobot,
     setRobotConfigs,
     setRobotTeams,
     setPhysicalRobotData,
     setExternalDataset,
+    setNewRobotsDataset,
     setTourStep,
     setTourSeen,
     setTour2Seen,
+    setTour3Seen,
+    setTour4Seen,
+    setNewRobotsArmed,
+    setTreeEditCount,
+    setGiveUpAvailable,
+    setStep7DemoActive,
+    setAlgorithmBuildArmed,
   ]);
 
   const openSettings = useCallback(() => setIsSettingsOpen(true), []);
@@ -326,6 +417,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setPhysicalRobotData,
       externalDataset,
       setExternalDataset,
+      newRobotsDataset,
+      setNewRobotsDataset,
       algorithmTree,
       setAlgorithmTree,
       manualTree,
@@ -344,8 +437,24 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setTourSeen,
       tour2Seen,
       setTour2Seen,
+      tour3Seen,
+      setTour3Seen,
+      tour4Seen,
+      setTour4Seen,
+      newRobotsArmed,
+      setNewRobotsArmed,
+      treeEditCount,
+      setTreeEditCount,
+      giveUpAvailable,
+      setGiveUpAvailable,
+      step7DemoActive,
+      setStep7DemoActive,
+      algorithmBuildArmed,
+      setAlgorithmBuildArmed,
       editRobotModalOpen,
       setEditRobotModalOpen,
+      questionDropdownOpen,
+      setQuestionDropdownOpen,
       robotTestActive,
       setRobotTestActive,
       testResultRobot,
@@ -372,6 +481,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setPhysicalRobotData,
       externalDataset,
       setExternalDataset,
+      newRobotsDataset,
+      setNewRobotsDataset,
       algorithmTree,
       setAlgorithmTree,
       manualTree,
@@ -390,8 +501,24 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setTourSeen,
       tour2Seen,
       setTour2Seen,
+      tour3Seen,
+      setTour3Seen,
+      tour4Seen,
+      setTour4Seen,
+      newRobotsArmed,
+      setNewRobotsArmed,
+      treeEditCount,
+      setTreeEditCount,
+      giveUpAvailable,
+      setGiveUpAvailable,
+      step7DemoActive,
+      setStep7DemoActive,
+      algorithmBuildArmed,
+      setAlgorithmBuildArmed,
       editRobotModalOpen,
       setEditRobotModalOpen,
+      questionDropdownOpen,
+      setQuestionDropdownOpen,
       robotTestActive,
       setRobotTestActive,
       testResultRobot,

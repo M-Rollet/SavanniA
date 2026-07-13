@@ -76,9 +76,9 @@ export const CORE_PROFILES: Profile[] = CORE_PROFILE_DEFS.map(p => ({
 /** Plain-language, sensor-specific reason a config fails a given check — ties the terrain
  * consequence back to the exact sensor a student can see in the lab data. */
 const FAILURE_HINTS = {
-  light_working: "ses phares ne s'allument pas — dans le tunnel, il ne verra rien venir.",
-  ir_working: 'son capteur de distance ne répond pas — il ne détectera ni obstacles ni passages à faune.',
-  motor_noise: 'son moteur fait un bruit inhabituel — sur la pente, il risque de caler.',
+  light_working: "sa lumière ne s'allume pas — dans le tunnel, il ne verra rien venir.",
+  ir_working: 'son capteur de distance ne répond pas — il ne détectera pas les animaux.',
+  motor_noise: 'son moteur fait un bruit inhabituel — sur la pente, il risque de peiner.',
   battery_level: "sa batterie est trop faible — il n'ira pas bien loin.",
 } as const;
 

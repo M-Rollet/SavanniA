@@ -12,15 +12,29 @@ import { DecisionTreeIntroModal } from '../components/DecisionTreeIntroModal';
 import { TourOverlay, isLaunchTestLockedByTour } from '../components/TourOverlay';
 import { TerrainModal } from '../components/TerrainModal';
 import { DataCheckModal } from '../components/DataCheckModal';
-import { ExternalDataIntroModal } from '../components/ExternalDataIntroModal';
+import { ExternalDataIntroModal, ExternalDataReadyModal } from '../components/ExternalDataIntroModal';
+import { TreeDifficultyModal } from '../components/TreeDifficultyModal';
+import { Step7IntroModal } from '../components/Step7IntroModal';
 import { FinalTestModal } from '../components/FinalTestModal';
 import { TimelinePanel } from '../components/TimelinePanel';
 import { DataTable } from '../components/DataTable';
 import { DecisionTree, type DecisionTreeHandle, type ValidationError } from '../components/DecisionTree';
-import { getStepDef, EMPTY_ROBOT_ENTRY, questionIdToCriterion, hasAllCriteria } from './stepDefinitions';
-import { CORE_PROFILES, QUESTION_SEQ_TYPE } from '../robotProfiles';
+import {
+  getStepDef,
+  STEP_DEFS,
+  EMPTY_ROBOT_ENTRY,
+  questionIdToCriterion,
+  hasAllCriteria,
+  type RobotEntry,
+  type ExternalRobotEntry,
+} from './stepDefinitions';
+import { CORE_PROFILES, MIN_ROBOTS, QUESTION_SEQ_TYPE } from '../robotProfiles';
 
 const SEQ_TIMEOUT_MS = 10000;
+// Playful stand-in names for the two synthetic "new robots" (step 5) when their slot has no
+// physically-configured robot — picked randomly so re-visiting the step doesn't always show the
+// same pair.
+const NEW_ROBOT_NICKNAMES = ['Bipbip', 'Zigzag', 'Cluc', 'Bidule', 'Ferro', 'Grelo', 'Clici'];
 // Flying-dot size for the tree → table result animation (see `flyToCell`) — kept large enough to
 // read clearly as it crosses the whole screen, not just a small tick.
 const FLIGHT_DOT_SIZE = 24;
@@ -94,6 +108,9 @@ export function SoftwareMain() {
     setTreeAccuracy,
     registerStopTesting,
     externalDataset,
+    newRobotsDataset,
+    setNewRobotsDataset,
+    newRobotsArmed,
     correctedCriteria,
     setCorrectedCriteria,
     setRobotTestActive,
@@ -101,8 +118,13 @@ export function SoftwareMain() {
     setTestResultRobot,
     tourStep,
     activeRobotConfigs,
+    treeEditCount,
+    setTreeEditCount,
+    step7DemoActive,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
+  const isFinalStep = stepDef.index === STEP_DEFS.length;
+  const [finalTestReopenToken, setFinalTestReopenToken] = useState(0);
   const showTree = stepDef.features.treeVisible;
   const showManual = stepDef.features.manualOp;
   const showToggle = showTree && showManual;
@@ -119,7 +141,7 @@ export function SoftwareMain() {
         : activeRobotConfigs,
     [stepDef.features.teamSwitch, activeRobotConfigs, robotTeams]
   );
-  // Steps that place every robot on the tree (4/5) show an aggregate view on that tab instead of
+  // Steps that place every robot on the tree (4/5/6) show an aggregate view on that tab instead of
   // a single selected robot — there's no per-robot selector there anymore, so a robot picked
   // earlier in "Opération manuelle" shouldn't leave the tab-pill icon colored on the tree tab.
   const showAggregateRobots = stepDef.features.robotPlacementOnTree && !effectiveManualMode;
@@ -213,7 +235,73 @@ export function SoftwareMain() {
     prevStepIndexRef.current = stepIndex;
   }, [stepIndex, setRobotTeams]);
 
-  // Field-test steps (3 & 7): put every ready robot in field mode (enables the center-button
+  // "De nouveaux robots" step: the 5th/6th core profiles' lab + terrain data arrives ready-made,
+  // no PRIMM walk needed for them — into physicalRobotData if that slot has a real, physically-
+  // configured robot (positional: robotConfigs[i] <-> CORE_PROFILES[i], same convention as
+  // robotProfiles.ts), or into newRobotsDataset as a synthetic stand-in otherwise (see
+  // DataTable.tsx and DecisionTree.tsx, which both fold newRobotsDataset in alongside real
+  // robots for this step). Each slot only ever writes once — the "already there?" checks make
+  // re-running this on every render a no-op once done. Gated on newRobotsArmed (set by
+  // StepIntroModal once the step-5 intro is dismissed) so the new rows appear — and fly in — right
+  // after the student sees that modal, instead of silently existing before they ever read it.
+  useEffect(() => {
+    if (stepIndex !== 5 || !newRobotsArmed) {
+      return;
+    }
+    const lockedCriteria = { light_working: true, ir_working: true, motor_noise: true, battery_level: true } as const;
+    let physicalUpdates: Record<string, RobotEntry> | null = null;
+    const newEntries: ExternalRobotEntry[] = [];
+    // Shuffled once per run so the two synthetic robots (if both needed) get distinct names.
+    const nicknamePool = [...NEW_ROBOT_NICKNAMES].sort(() => Math.random() - 0.5);
+    [MIN_ROBOTS, MIN_ROBOTS + 1].forEach(profileIndex => {
+      const profile = CORE_PROFILES[profileIndex];
+      if (!profile) {
+        return;
+      }
+      const real = robotConfigs[profileIndex];
+      if (real) {
+        if (!physicalRobotData[real.uuid]?.observation) {
+          physicalUpdates = physicalUpdates ?? { ...physicalRobotData };
+          physicalUpdates[real.uuid] = {
+            ...EMPTY_ROBOT_ENTRY,
+            testResults: { ...profile.config },
+            lockedCriteria,
+            tested: true,
+            observation: { category: profile.expectedCategory, notes: '' },
+          };
+        }
+        return;
+      }
+      const id = `new-robot-${profileIndex + 1}`;
+      if (newRobotsDataset.some(e => e.id === id)) {
+        return;
+      }
+      newEntries.push({
+        id,
+        label: nicknamePool[newEntries.length] ?? `${profileIndex - MIN_ROBOTS + 1}`,
+        testResults: { ...profile.config },
+        lockedCriteria,
+        tested: true,
+        observation: { category: profile.expectedCategory, notes: '' },
+      });
+    });
+    if (physicalUpdates) {
+      setPhysicalRobotData(physicalUpdates);
+    }
+    if (newEntries.length > 0) {
+      setNewRobotsDataset([...newRobotsDataset, ...newEntries]);
+    }
+  }, [
+    stepIndex,
+    newRobotsArmed,
+    robotConfigs,
+    physicalRobotData,
+    newRobotsDataset,
+    setPhysicalRobotData,
+    setNewRobotsDataset,
+  ]);
+
+  // Field-test steps (3 & 8): put every ready robot in field mode (enables the center-button
   // line-follow test) on entry, and take them back out of it again on exit.
   const prevFieldTestRef = useRef(false);
   useEffect(() => {
@@ -360,6 +448,11 @@ export function SoftwareMain() {
     [seqDoneToAnswer, recordCriterionResult]
   );
 
+  // Guards the field-mode reconciliation below against piling up a second retry for a robot
+  // that already has one in flight (the store's own emitEvent already retries a few times
+  // internally before giving up — see Thymio2EventVariable.emitEvent's EVENT_CONFIRMATIONS).
+  const fieldModeSyncingRef = useRef(new Set<string>());
+
   const tryConnect = useCallback(
     (uuid: string) => {
       if (connectingRef.current.has(uuid)) {
@@ -385,6 +478,25 @@ export function SoftwareMain() {
         }
         if (vars.seq_done !== undefined && uuid === controledRobotRef.current) {
           handleSeqDone(vars.seq_done);
+        }
+        // Self-heal field_mode from the robot's own telemetry (emitted continuously via
+        // onevent prox in the firmware) instead of trusting the one-shot set_mode_on/off call
+        // to have landed — on page reload several robots reconnect at once and the store's
+        // built-in retry (≈1.2 s total) can lose that race under WiFi congestion, silently
+        // leaving a robot stuck out of field mode with nothing to correct it afterwards.
+        if (vars.status_field_mode !== undefined && !fieldModeSyncingRef.current.has(uuid)) {
+          const desired = fieldTestRef.current ? 1 : 0;
+          if (vars.status_field_mode !== desired) {
+            fieldModeSyncingRef.current.add(uuid);
+            user
+              .emitEvent(uuid, desired ? 'set_mode_on' : 'set_mode_off')
+              .catch((err: unknown) => {
+                console.warn('[SoftwareMain] field_mode resync failed for', uuid, err);
+              })
+              .finally(() => {
+                fieldModeSyncingRef.current.delete(uuid);
+              });
+          }
         }
       })
         .then(async () => {
@@ -467,8 +579,14 @@ export function SoftwareMain() {
     }
   }, [controllableRobots, controledRobot, selectRobot]);
 
-  // Propagate team changes to already-initialised robots.
+  // Propagate team changes to already-initialised robots. Skipped during field-test steps (3 & 8)
+  // — there, every robot must be in field_mode regardless of team, and that's already enforced by
+  // the dedicated fieldTest effect above; letting this one run too would clobber that with stale
+  // team assignments (e.g. leftover 'bureau' from a previous step-4 visit).
   useEffect(() => {
+    if (stepDef.features.fieldTest) {
+      return;
+    }
     robotConfigs.forEach(({ uuid }) => {
       if (statuses[uuid] !== 'ready') {
         return;
@@ -476,7 +594,7 @@ export function SoftwareMain() {
       const isField = robotTeams[uuid] === 'terrain';
       user.setVariables(uuid, new Map([['field_mode', [isField ? 1 : 0]]]));
     });
-  }, [robotTeams]);
+  }, [robotTeams, stepDef.features.fieldTest]);
 
   const robotReady = !!controledRobot && statuses[controledRobot] === 'ready';
   // True while the currently selected robot's colored test result is still the one showing in the
@@ -614,8 +732,8 @@ export function SoftwareMain() {
                   </span>
                 ) : showAggregateRobots ? (
                   <span className="text-sm font-medium text-gray-600 px-1">
-                    {activeRobotConfigs.length + externalDataset.length} robot
-                    {activeRobotConfigs.length + externalDataset.length > 1 ? 's' : ''}
+                    {activeRobotConfigs.length + newRobotsDataset.length + externalDataset.length} robot
+                    {activeRobotConfigs.length + newRobotsDataset.length + externalDataset.length > 1 ? 's' : ''}
                   </span>
                 ) : (
                   <>
@@ -705,10 +823,15 @@ export function SoftwareMain() {
             {/* Main content: tree or manual operation */}
             <div
               ref={treeAreaRef}
+              data-tour="tree-zone"
               className="flex-1 min-h-0 rounded-xl rounded-tl-none overflow-hidden border border-gray-100 bg-white"
             >
               {stepDef.features.algorithmMode ? (
-                <DecisionTree mode="algorithm" />
+                step7DemoActive ? (
+                  <DecisionTree key="algorithm-demo" mode="algorithm" previewMode />
+                ) : (
+                  <DecisionTree key="algorithm-real" mode="algorithm" />
+                )
               ) : !showTree && !showManual ? (
                 <div className="w-full h-full flex items-center justify-center">
                   <p className="text-gray-300 text-sm">Cette étape sera bientôt disponible</p>
@@ -727,11 +850,13 @@ export function SoftwareMain() {
                   ref={decisionTreeRef}
                   testing={testing}
                   editable={stepDef.features.treeEditable}
+                  deletable={stepDef.features.treeDeletable}
                   robotPlacement={stepDef.features.robotPlacementOnTree}
                   onValidationChange={setErrors}
                   onActiveQuestionChange={handleActiveQuestion}
                   onLeafReached={handleLeafReached}
                   onClassificationChange={setTreeAccuracy}
+                  onStructuralEdit={() => setTreeEditCount(treeEditCount + 1)}
                 />
               )}
             </div>
@@ -740,14 +865,24 @@ export function SoftwareMain() {
 
         {/* Right — Timeline + Data (1/3) */}
         <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0' }}>
-          <div className="flex flex-col gap-3 p-6 border-b overflow-y-auto" style={{ flex: '3 1 0' }}>
+          <div className="flex flex-col gap-3 px-5 py-4 border-b overflow-y-auto" style={{ flex: '1.15 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">
               Journal de mission
             </h3>
             <TimelinePanel />
+            {isFinalStep && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onPress={() => setFinalTestReopenToken(t => t + 1)}
+              >
+                Test final
+              </Button>
+            )}
           </div>
 
-          <div data-tour="table-zone" className="flex flex-col gap-3 p-6 overflow-y-auto" style={{ flex: '2 1 0' }}>
+          <div data-tour="table-zone" className="flex flex-col gap-3 px-5 py-4 overflow-y-auto" style={{ flex: '1 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
             {stepIndex === 1 && (
               <p className="text-gray-500 text-xs -mt-2">
@@ -772,7 +907,10 @@ export function SoftwareMain() {
       <ReunionModal />
       <TerrainModal />
       <ExternalDataIntroModal />
-      <FinalTestModal />
+      <ExternalDataReadyModal />
+      <TreeDifficultyModal />
+      <Step7IntroModal />
+      <FinalTestModal reopenToken={finalTestReopenToken} />
       <DataCheckModal />
 
       <AnimatePresence>

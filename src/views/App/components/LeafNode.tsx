@@ -15,6 +15,8 @@ export type LeafNodeData = {
   isOnActivePath: boolean;
   testing: boolean;
   editable: boolean;
+  /** Whether the delete (×) button shows — subset of `editable`. */
+  deletable: boolean;
   highlighted: boolean;
   placements: RobotPlacement[];
   onChangeDecision: (nodeId: string, decision: boolean) => void;
@@ -36,6 +38,7 @@ export function LeafNode({ id, data }: NodeProps) {
     isOnActivePath,
     testing,
     editable,
+    deletable,
     highlighted,
     placements,
     onChangeDecision,
@@ -43,6 +46,7 @@ export function LeafNode({ id, data }: NodeProps) {
     onPlacementClick,
   } = data as LeafNodeData;
   const canEdit = editable && !testing;
+  const canDelete = canEdit && deletable;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
@@ -56,7 +60,7 @@ export function LeafNode({ id, data }: NodeProps) {
     >
       <Handle type="target" position={Position.Top} />
 
-      {canEdit && (
+      {canDelete && (
         <button
           onClick={() => onDelete(id)}
           onMouseDown={stopProp}
@@ -112,7 +116,7 @@ export function LeafNode({ id, data }: NodeProps) {
               const incorrect = placements.filter(p => p.matches === false);
               const unclassified = placements.filter(p => p.matches === null);
               return (
-                <div className="px-2.5 pb-2.5 pt-1.5 border-t border-gray-100">
+                <div data-tour="leaf-placements" className="px-2.5 pb-2.5 pt-1.5 border-t border-gray-100">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex flex-wrap gap-1 justify-start">
                       {correct.map(p => (

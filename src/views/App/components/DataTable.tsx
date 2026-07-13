@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckShape, Ban } from '@gravity-ui/icons';
 import { ROBOT_COLORS, useScenario } from '../ScenarioContext';
@@ -12,13 +12,18 @@ import {
 } from '../steps/stepDefinitions';
 import { getWrongCriteria } from '../robotProfiles';
 import { EditRobotModal, BOOL_OPTIONS, NOISE_OPTIONS, BATTERY_OPTIONS } from './EditRobotModal';
-import { TOUR_ADVANCE_DELAY_MS, TOUR_INTERLUDE_2, isPredictionLockedByTour } from './TourOverlay';
+import { TOUR_ADVANCE_DELAY_MS, TOUR_INTERLUDE_2, TOUR4_STEP, isPredictionLockedByTour } from './TourOverlay';
 import './TreeNodes.css';
+
+// New-row fly-in animation (external dataset / new robots) — stagger delay per row and each row's
+// own duration. Shared with ExternalDataIntroModal, which times its follow-up modal off these.
+export const ROW_STAGGER_S = 0.05;
+export const ROW_DURATION_S = 0.15;
 
 const CRITERIA: Criterion[] = ['light_working', 'ir_working', 'motor_noise', 'battery_level'];
 
 const CRITERIA_LABELS: Record<Criterion, string[]> = {
-  light_working: ['Phares'],
+  light_working: ['Lumière'],
   ir_working: ['Capteurs', 'distance'],
   motor_noise: ['Bruit', 'moteur'],
   battery_level: ['Batterie'],
@@ -45,6 +50,27 @@ function formatResult(category: 'ready' | 'repair' | undefined): string {
   return category === 'ready' ? 'Partir' : 'Réparer';
 }
 
+/** Read-only ready/repair display — same icon convention as the editable Pronostic buttons below
+ * (and the rest of the app). `invert` is for use on a robot-color background (live tree result),
+ * where green/amber would clash — falls back to plain white text instead. */
+function ResultBadge({ category, invert = false }: { category: 'ready' | 'repair' | undefined; invert?: boolean }) {
+  if (!category) {
+    return <span className="text-gray-300">–</span>;
+  }
+  const ready = category === 'ready';
+  const Icon = ready ? CheckShape : Ban;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${
+        invert ? 'text-white font-medium' : ready ? 'text-green-700' : 'text-amber-700'
+      }`}
+    >
+      <Icon width={11} height={11} />
+      {formatResult(category)}
+    </span>
+  );
+}
+
 type Row = {
   key: string;
   label: string;
@@ -62,6 +88,7 @@ export function DataTable() {
     physicalRobotData,
     setPhysicalRobotData,
     externalDataset,
+    newRobotsDataset,
     dataCheckFailed,
     algorithmTree,
     manualTree,
@@ -73,11 +100,39 @@ export function DataTable() {
     setEditRobotModalOpen,
   } = useScenario();
   const [editingUuid, setEditingUuid] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // The guided tour waits for this modal to close before showing its next popover.
   useEffect(() => {
     setEditRobotModalOpen(editingUuid !== null);
   }, [editingUuid, setEditRobotModalOpen]);
+
+  // Keeps the newly-arrived rows (external dataset / new robots) in view while they fly in.
+  // Rather than an instant/native smooth-scroll (which reaches the bottom well before the later,
+  // staggered rows have actually appeared), this animates scrollTop in step with the same total
+  // duration as the row stagger itself, so the view "follows" the last row into place instead of
+  // jumping ahead and leaving the student waiting at an already-bottomed-out scroll position.
+  const externalRowCount = externalDataset.length + newRobotsDataset.length;
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (externalRowCount === 0 || !container) {
+      return;
+    }
+    const settleMs = ((externalRowCount - 1) * ROW_STAGGER_S + ROW_DURATION_S) * 1000;
+    const startTop = container.scrollTop;
+    const targetTop = container.scrollHeight - container.clientHeight;
+    const startTime = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min((now - startTime) / settleMs, 1);
+      container.scrollTop = startTop + (targetTop - startTop) * t;
+      if (t < 1) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [externalRowCount]);
 
   const stepDef = getStepDef(stepIndex);
   const activeTree = stepDef.features.algorithmMode ? algorithmTree : manualTree;
@@ -108,6 +163,15 @@ export function DataTable() {
         isExternal: false,
       };
     }),
+    ...newRobotsDataset.map((e, i) => ({
+      key: e.id,
+      label: e.label,
+      color: '#94a3b8',
+      uuid: undefined,
+      entry: e as RobotEntry,
+      isExternal: true,
+      arrivalIndex: i,
+    })),
     ...externalDataset.map((e, i) => ({
       key: e.id,
       label: e.label,
@@ -138,7 +202,7 @@ export function DataTable() {
   }
 
   return (
-    <div className="overflow-auto rounded-xl border border-gray-200">
+    <div ref={scrollRef} className="overflow-auto rounded-xl border border-gray-200">
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="bg-gray-50">
@@ -191,6 +255,8 @@ export function DataTable() {
                 ? 'prediction-row'
                 : tourStep === 27 && row.uuid && row.uuid === controledRobot
                 ? 'tree-result-row'
+                : tourStep === TOUR4_STEP && mismatch
+                ? 'mismatched-row'
                 : row.uuid && row.uuid === controledRobot
                 ? 'selected-robot-row'
                 : undefined;
@@ -200,7 +266,7 @@ export function DataTable() {
                 data-tour={rowTourAttr}
                 initial={row.isExternal ? { opacity: 0, x: 24 } : false}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.35, delay: (row.arrivalIndex ?? 0) * 0.12 }}
+                transition={{ duration: ROW_DURATION_S, delay: (row.arrivalIndex ?? 0) * ROW_STAGGER_S }}
                 onClick={() => {
                   if (!row.uuid) {
                     return;
@@ -239,12 +305,12 @@ export function DataTable() {
                             )} ».`
                           : undefined
                       }
-                      className={`relative px-2 py-2 text-gray-600 border overflow-hidden ${
+                      className={`relative px-2 py-2 text-gray-600 overflow-hidden ${
                         isWrong
-                          ? 'bg-yellow-100 border-yellow-300'
+                          ? 'bg-yellow-100 border-2 border-yellow-300'
                           : isCorrected
-                          ? 'border-amber-300'
-                          : 'border-gray-100'
+                          ? 'border-2 border-amber-300'
+                          : 'border border-gray-100'
                       }`}
                     >
                       {isCorrected && (
@@ -288,23 +354,28 @@ export function DataTable() {
                         </button>
                       </div>
                     ) : (
-                      <span className="px-1 text-gray-600">{formatResult(row.entry?.prediction ?? undefined)}</span>
+                      <span className="px-1">
+                        <ResultBadge category={row.entry?.prediction ?? undefined} />
+                      </span>
                     )}
                   </td>
                 )}
                 {showLiveTree && (
                   <td
                     data-cell={row.uuid ? `${row.uuid}-prediction` : undefined}
-                    className={`px-2 py-2 border overflow-hidden transition-colors duration-300 ${
+                    className={`px-2 py-2 overflow-hidden transition-[background-color,box-shadow] duration-300 ${
                       isLiveResult
-                        ? ''
+                        ? 'border border-gray-100'
                         : mismatch
-                        ? 'bg-red-100 border-red-300 text-gray-600'
-                        : 'border-gray-100 text-gray-600'
+                        ? 'bg-red-100 border-2 border-red-300 text-gray-600'
+                        : 'border border-gray-100 text-gray-600'
                     }`}
                     style={{
                       backgroundColor: isLiveResult ? row.color : undefined,
-                      borderColor: isLiveResult ? row.color : undefined,
+                      // A colored inset ring instead of an actual table border: on a border-collapse
+                      // table, a real border here fights the shared 1px gray grid line with the
+                      // adjacent cell/row, which is what produced the ugly seam at the cell's edges.
+                      boxShadow: isLiveResult ? `inset 0 0 0 2px ${row.color}` : undefined,
                     }}
                   >
                     <motion.span
@@ -312,21 +383,17 @@ export function DataTable() {
                       initial={{ opacity: 0, scale: 0.5 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3 }}
-                      className={`inline-block transition-colors duration-300 ${
-                        isLiveResult ? 'text-white font-medium' : ''
-                      }`}
+                      className="inline-block transition-colors duration-300"
                     >
-                      {formatResult(predicted ?? undefined)}
+                      <ResultBadge category={predicted ?? undefined} invert={isLiveResult} />
                     </motion.span>
                   </td>
                 )}
                 {showResult && (
                   <td
-                    className={`px-2 py-2 text-gray-600 border ${
-                      mismatch ? 'bg-red-100 border-red-300' : 'border-gray-100'
-                    }`}
+                    className={`px-2 py-2 ${mismatch ? 'bg-red-100 border-2 border-red-300' : 'border border-gray-100'}`}
                   >
-                    {formatResult(observed)}
+                    <ResultBadge category={observed} />
                   </td>
                 )}
               </motion.tr>

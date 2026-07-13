@@ -124,11 +124,16 @@ export function TerrainModal() {
             <Modal.Body className="flex gap-8">
               {/* Left — explanations */}
               <div className="flex-1 flex flex-col gap-3">
+                <p className="text-gray-600 text-sm">
+                  Après avoir analysé les robots au labo, il est temps d'aller les tester sur le terrain. Tu pourras ensuite comparer ce que tu auras observé avec les prédictions que l'arbre de décision a faites.
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Sur ce circuit tu croises un tunnel, des animaux et une colline. Avant de lancer un robot,
+                  rappele-toi des observations que tu as faites en laboratoire.
+                </p>
                 <img src={circuitImage} alt="" className="w-100 max-w-full mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
-                  Sur ce circuit tu croises une pente, un tunnel et un passage à faune. Avant de lancer un robot,
-                  regarde ses données du labo : qu'est-ce qui pourrait le faire échouer, et où ? Utilise le bouton
-                  central pour lancer le test.
+                  Pour lancer un robot sur le parcours, pose le sur la place de départ et appuie sur le bouton central. Regarde ensuite ce qu'il se passe.
                 </p>
                 <img src={buttonImage} alt="" className="w-100 max-w-full rounded-xl mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
@@ -234,14 +239,10 @@ export function TerrainModal() {
       </Modal.Backdrop>
       <CheckFailedModal
         failed={observationCheckFailed}
-        title="Le labo et le terrain ne sont pas d'accord"
+        title="Les observations semblent incorrectes"
         messages={[
-          ...(wrongMessages.length > 0
-            ? wrongMessages
-            : [
-                "Certains robots sont marqués « Prêt à partir » ou « À réparer » alors que ce n'est pas ce qui a été observé sur le terrain.",
-              ]),
-          'Regarde quel capteur correspond à quel obstacle, puis corrige le statut des cartes surlignées en jaune ci-dessus.',
+          "Certains robots sont marqués « Prêt à partir » ou « À réparer » alors que ce n'est pas ce qui a été observé sur le terrain.",
+          "Si besoin, relance un robot sur le terrain et observe ce qu'il se passe.",
         ]}
       />
     </Modal>

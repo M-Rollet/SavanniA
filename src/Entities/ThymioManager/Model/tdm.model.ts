@@ -7,6 +7,7 @@ export interface TdmController {
   setVariables: (uuid: string, vars: Map<string, number[]>) => Promise<void>;
   emitEvent: (uuid: string, eventName: string) => Promise<void>;
   identify: (uuid: string) => Promise<void>;
+  release: (uuid: string) => Promise<void>;
 }
 
 export interface TdmClient {
@@ -17,4 +18,5 @@ export interface TdmClient {
   setVariables: (uuid: string, vars: Map<string, number[]>) => Promise<void>;
   emitEvent: (uuid: string, eventName: string) => Promise<void>;
   identify: (uuid: string) => Promise<void>;
+  release: (uuid: string) => Promise<void>;
 }

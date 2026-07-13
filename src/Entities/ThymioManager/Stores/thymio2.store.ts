@@ -160,6 +160,19 @@ export class Thymio2EventVariable implements Thymio {
   };
 
   /**
+   * Releases the lock taken by `initialize()`, so a later `takeControl()` on this same node
+   * (this store instance is never recreated — see ClientDeviceManager.setRobot) can re-acquire
+   * it. Safe to call regardless of current lock state.
+   */
+  release = async () => {
+    if (!this.node) {
+      return;
+    }
+    this.readyResolver = null;
+    await this.node.unlock().catch(() => {});
+  };
+
+  /**
    * Flashes the robot's top LED to identify it physically.
    * If already initialised ('ready'), uses the Aseba identify sequence (≈2 s).
    * If not yet initialised ('available'), uploads a one-shot flash program, waits, then unlocks.

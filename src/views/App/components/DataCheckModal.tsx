@@ -8,10 +8,10 @@ export function DataCheckModal() {
   return (
     <CheckFailedModal
       failed={dataCheckFailed}
-      title="Certaines observations semblent fausses"
+      title="Certaines valeurs semblent inexactes"
       messages={[
-        'Le tableau est complet, mais certaines valeurs ne correspondent pas à ce qui a été observé sur les robots.',
-        "Retourne dans l'interface manuelle pour vérifier les cases surlignées en jaune dans le tableau et corrige les.",
+        "Le tableau est complet, mais certaines valeurs ne correspondent pas à ce qu'on peut observer sur les robots.",
+        "Retourne vérifier les cases surlignées en jaune dans le tableau et corrige les.",
       ]}
     />
   );

@@ -12,6 +12,7 @@ export class AllUser implements Users {
   setVariables: Users['setVariables'];
   emitEvent!: Users['emitEvent'];
   identify: Users['identify'];
+  release: Users['release'];
 
   constructor({ activity, hosts }: { activity: Activity; hosts: string[] }) {
     const thymioIA = Container.factoryFromInjectable<IThymioIA>('BOUNDED_CONTEXT', 'ThymioIA', [], { activity, hosts });
@@ -25,5 +26,6 @@ export class AllUser implements Users {
     this.setVariables = thymioIA.setVariables;
     this.emitEvent = thymioIA.emitEvent;
     this.identify = thymioIA.identify;
+    this.release = thymioIA.release;
   }
 }

@@ -116,10 +116,10 @@ function buildEntries(
 }
 
 /**
- * A fixed set of non-physical robots injected at step 5 to enlarge the training set.
- * ~1/3 ready, ~2/3 needing repair (matches CORE_PROFILES' ratio), covering every single-,
- * double-, triple-, and quadruple-failure combination of the 4 criteria for a rich, varied
- * dataset to build the algorithm-mode decision tree from (step 6).
+ * A fixed set of non-physical robots injected at step 6 ("Données externes") to enlarge the
+ * training set. ~1/3 ready, ~2/3 needing repair (matches CORE_PROFILES' ratio), covering every
+ * single-, double-, triple-, and quadruple-failure combination of the 4 criteria for a rich,
+ * varied dataset to build the algorithm-mode decision tree from (step 7).
  */
 export const EXTERNAL_DATASET: ExternalRobotEntry[] = buildEntries([
   // Ready (light + IR working, no motor noise, battery not empty)
@@ -148,8 +148,8 @@ export const EXTERNAL_DATASET: ExternalRobotEntry[] = buildEntries([
     cfg: { light_working: 1, ir_working: 1, motor_noise: 0, battery_level: 1 },
   },
   {
-    id: 'external-ganymede',
-    label: 'Ganymede',
+    id: 'external-ganym',
+    label: 'Ganym',
     cfg: { light_working: 1, ir_working: 1, motor_noise: 1, battery_level: 1 },
   },
   {
@@ -180,8 +180,8 @@ export const EXTERNAL_DATASET: ExternalRobotEntry[] = buildEntries([
   },
   // Needs repair — two failures
   {
-    id: 'external-andromeda',
-    label: 'Andromeda',
+    id: 'external-androm',
+    label: 'Androm',
     cfg: { light_working: 0, ir_working: 0, motor_noise: 0, battery_level: 2 },
   },
   {
@@ -218,7 +218,7 @@ export const EXTERNAL_DATASET: ExternalRobotEntry[] = buildEntries([
   },
 ]);
 
-/** A decision tree built step-by-step in algorithm mode (step 6). */
+/** A decision tree built step-by-step in algorithm mode (step 7). */
 export type AlgoTree =
   | { type: 'pending' }
   | { type: 'leaf'; label: 'ready' | 'repair' | null }
@@ -296,7 +296,7 @@ export const PHASES: Phase[] = [
     label: 'Phase 3 · Bilan & optimisation',
     icon: scenarioBilan,
     blurb: 'Comparer, corriger, puis automatiser.',
-    steps: [4, 5, 6, 7],
+    steps: [4, 5, 6, 7, 8],
     accentText: 'text-amber-600',
     accentBorder: 'border-amber-500',
     accentBg: 'bg-amber-500',
@@ -322,6 +322,9 @@ export type StepFeatures = {
   treeVisible: boolean;
   /** Decision tree can be edited (add/remove nodes, change questions). */
   treeEditable: boolean;
+  /** Nodes can be deleted (subset of treeEditable — off at step 4 so students learn to tweak the
+   * existing tree instead of tearing it down). */
+  treeDeletable: boolean;
   /** Data table of collected robot test results is shown. */
   dataTable: boolean;
   /** Data table rows can be opened and edited (vs. read-only). */
@@ -334,7 +337,7 @@ export type StepFeatures = {
   algorithmMode: boolean;
   /** Robots can be placed/tested directly against tree nodes. */
   robotPlacementOnTree: boolean;
-  /** A physical field test is in progress — robots should be put in field mode (steps 3 & 7). */
+  /** A physical field test is in progress — robots should be put in field mode (steps 3 & 8). */
   fieldTest: boolean;
 };
 
@@ -367,6 +370,7 @@ const NO_FEATURES: StepFeatures = {
   manualOp: false,
   treeVisible: false,
   treeEditable: false,
+  treeDeletable: true,
   dataTable: false,
   dataEditable: false,
   observationEntry: false,
@@ -390,11 +394,10 @@ export const STEP_DEFS: StepDef[] = [
     objective: "Découvrir l'état de chaque robot avant de décider.",
     action: 'Teste les capteurs de chaque robot, note tes observations, puis donne ton pronostic dans le tableau.',
     intro: {
-      heading: 'Phase 1 · Labo — Premières observations',
+      heading: 'Bienvenue au laboratoire',
       body: [
-        "Avant d'envoyer un robot dans la savane, un scientifique commence par examiner son matériel lui-même. Allume les phares, fais tourner les moteurs, approche ta main des capteurs, vérifie la batterie.",
-        "Note ce que tu observes dans le tableau, robot par robot. Ce sont tes premières impressions — elles ne sont pas encore vérifiées, et c'est normal.",
-        "Puis, dans la colonne « Pronostic », engage-toi pour chaque robot : d'après ce que tu as vu, est-il prêt à partir ou à réparer ? Ce n'est pas grave de se tromper — on vérifiera ensuite.",
+        "Avant d'envoyer un robot dans la savane, un scientifique commence par examiner son matériel lui-même. Allume sa lumière, fais tourner les moteurs, approche ta main des capteurs, vérifie la batterie. Tu pourras noter toutes tes observations dans un tableau, robot par robot.",
+        "Puis, tu pourras faire ton pronostic d'après ce que tu as vu\u00A0: est-il prêt à partir ou doit être réparé\u00A0? Ce n'est pas grave de se tromper — on vérifiera ensuite.",
       ],
     },
   },
@@ -432,6 +435,7 @@ export const STEP_DEFS: StepDef[] = [
       manualOp: true,
       treeVisible: true,
       treeEditable: true,
+      treeDeletable: false,
       dataTable: true,
       robotPlacementOnTree: true,
     },
@@ -443,42 +447,66 @@ export const STEP_DEFS: StepDef[] = [
   },
   {
     index: 5,
+    label: 'De nouveaux robots',
+    shortLabel: 'Nouveaux',
+    features: {
+      ...NO_FEATURES,
+      treeVisible: true,
+      treeEditable: true,
+      dataTable: true,
+      robotPlacementOnTree: true,
+    },
+    // Same shape as step 4: 100% correct classification of everyone currently on the tree —
+    // here that set has just grown by the 2 newly-arrived robots (see the pre-fill effect in
+    // SoftwareMain.tsx, and DecisionTree.tsx's leafPlacements, which folds newRobotsDataset in
+    // alongside robotConfigs so both count toward treeAccuracy).
+    canAdvance: ({ treeAccuracy }) =>
+      treeAccuracy !== null && treeAccuracy.total > 0 && treeAccuracy.correct === treeAccuracy.total,
+    objective: "Vérifier que l'arbre reconnaît aussi des robots qu'il n'a jamais vus.",
+    action: "Regarde où ces nouveaux robots atterrissent dans l'arbre, corrige si besoin.",
+    intro: {
+      heading: 'De nouveaux robots arrivent',
+      body: [
+        "Deux nouveaux robots rejoignent l'équipe. Pas besoin de les observer un par un : leurs données de labo et de terrain sont déjà là, dans le tableau.",
+        "Ta seule question : est-ce que ton arbre — celui que tu viens d'affiner — les classe correctement du premier coup ? Sinon, ajuste-le encore.",
+      ],
+    },
+  },
+  {
+    index: 6,
     label: 'Données externes',
     shortLabel: 'Externe',
     features: {
       ...NO_FEATURES,
-      teamSwitch: true,
+      teamSwitch: false,
       treeVisible: true,
       treeEditable: true,
       dataTable: true,
       externalData: true,
       robotPlacementOnTree: true,
     },
-    canAdvance: () => true,
+    canAdvance: ({ treeAccuracy }) =>
+      treeAccuracy !== null && treeAccuracy.total > 0 && treeAccuracy.correct === treeAccuracy.total,
     objective: 'Vérifier que ton arbre marche aussi sur des robots inconnus.',
     action: "Ajuste l'arbre pour trier correctement les nouveaux robots.",
   },
   {
-    index: 6,
+    index: 7,
     label: "Construire l'algorithme",
     shortLabel: 'Algorithme',
     features: { ...NO_FEATURES, algorithmMode: true, dataTable: true },
     canAdvance: ({ algorithmTree }) => algorithmTree !== null && isAlgoTreeComplete(algorithmTree),
     objective: "Trouver une méthode automatique pour construire l'arbre.",
-    action: "À chaque étape, garde la question qui fait le moins d'erreurs.",
-    intro: {
-      heading: "Construire l'algorithme",
-      body: [
-        "Avec 6 robots, trier à la main reste possible. Mais l'autre équipe vient d'en envoyer 30 de plus — impossible de continuer au feeling.",
-        "Il nous faut une méthode automatique qui marche à chaque fois, quel que soit le nombre de robots : à chaque étape, tester toutes les questions possibles et garder celle qui fait le moins d'erreurs. À toi de la découvrir.",
-      ],
-    },
+    action:
+      "Regarde l'algorithme choisir automatiquement, à chaque étape, la question qui mélange le moins les deux groupes.",
+    // Arrival is announced by the dedicated Step7IntroModal (mixedness → Gini → live preview),
+    // so no plain text intro here — same convention as step 2's DecisionTreeIntroModal.
   },
   {
-    index: 7,
+    index: 8,
     label: 'Test final',
     shortLabel: 'Final',
-    features: { ...NO_FEATURES, fieldTest: true },
+    features: { ...NO_FEATURES, algorithmMode: true, dataTable: true, fieldTest: true },
     canAdvance: () => false,
     objective: 'Prouver que ton IA fonctionne.',
     action: "Vérifie qu'elle choisit les bons robots pour la mission.",

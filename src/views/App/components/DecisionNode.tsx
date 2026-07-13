@@ -3,6 +3,7 @@ import { Plus, Xmark } from '@gravity-ui/icons';
 import { Dropdown } from '@heroui/react';
 import './TreeNodes.css';
 import { QUESTIONS } from './questions';
+import { useScenario } from '../ScenarioContext';
 
 export type DecisionNodeData = {
   questionId: string | null;
@@ -17,10 +18,13 @@ export type DecisionNodeData = {
   onDelete: (nodeId: string) => void;
   testing: boolean;
   editable: boolean;
+  /** Whether the delete (×) button shows — subset of `editable`. */
+  deletable: boolean;
   activeHandle: 'yes' | 'no' | null;
   isOnActivePath: boolean;
-  /** Optional prominent total-error-count badge (algorithm mode only). */
-  errorBadge?: number;
+  /** Optional prominent mixedness (Gini impurity) badge for the currently-selected question
+   * (algorithm mode only) — 0 is a pure split, higher is more mixed. */
+  giniBadge?: number;
 };
 
 export const NODE_WIDTH = 310;
@@ -39,16 +43,19 @@ export function DecisionNode({ id, data }: NodeProps) {
     onDelete,
     testing,
     editable,
+    deletable,
     activeHandle,
     isOnActivePath,
-    errorBadge,
+    giniBadge,
   } = data as DecisionNodeData;
 
+  const { setQuestionDropdownOpen } = useScenario();
   const usedElsewhere = new Set([...ancestorQuestionIds, ...descendantQuestionIds]);
   const availableQuestions = QUESTIONS.filter(q => q.id === questionId || !usedElsewhere.has(q.id));
   const selectedQuestion = QUESTIONS.find(q => q.id === questionId);
   const canAddDecisionChild = ancestorCount + 1 < QUESTIONS.length;
   const canEdit = editable && !testing;
+  const canDelete = canEdit && deletable;
   const stopProp = (e: React.MouseEvent) => e.stopPropagation();
 
   return (
@@ -62,17 +69,13 @@ export function DecisionNode({ id, data }: NodeProps) {
     >
       <Handle type="target" position={Position.Top} />
 
-      {errorBadge !== undefined && (
-        <div
-          className={`absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-xs font-bold shadow-sm z-20 whitespace-nowrap ${
-            errorBadge === 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {errorBadge} erreur{errorBadge > 1 ? 's' : ''}
+      {giniBadge !== undefined && (
+        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-xs font-bold shadow-sm z-20 whitespace-nowrap bg-amber-200 text-amber-900">
+          Gini : {giniBadge.toFixed(2)}
         </div>
       )}
 
-      {canEdit && (
+      {canDelete && (
         <button
           onClick={() => onDelete(id)}
           onMouseDown={stopProp}
@@ -86,7 +89,7 @@ export function DecisionNode({ id, data }: NodeProps) {
       <div className="node-card rounded-xl bg-white shadow-sm border transition-all">
         {/* Question dropdown */}
         <div className="px-3 pt-3 pb-2 border-b border-gray-100">
-          <Dropdown>
+          <Dropdown onOpenChange={setQuestionDropdownOpen}>
             <Dropdown.Trigger
               isDisabled={!canEdit}
               onMouseDown={stopProp}

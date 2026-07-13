@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal, useOverlayState, Button } from '@heroui/react';
-import { ChevronLeft, ChevronRight } from '@gravity-ui/icons';
+import { ChevronLeft, ChevronRight, CheckShape, Ban, Xmark } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { hasAllCriteria } from '../steps/stepDefinitions';
 
@@ -14,6 +14,14 @@ export const TOUR_INTERLUDE_2 = 200;
 // interlude. Kept in a distinct range from the step-1 tour above so both can share the same
 // tourStep/TOUR_STEPS machinery without colliding.
 export const TOUR2_INTERLUDE = 300;
+
+// Step-4 tour (editing the tree): spotlighted steps numbered 40-42, ending in this interlude.
+export const TOUR3_INTERLUDE = 400;
+
+// Step-5 tour: two popovers, no interlude — the last one finishes the tour directly (see the
+// special-case in handleOk below). Started from StepIntroModal the same way as the step-1 tour.
+export const TOUR4_STEP = 50;
+export const TOUR4_STEP_LEAF = 51;
 
 /** Pause between the student completing what a "wait" popover asked for and the tour moving on
  * to the next one, so the result of their action is visible before the spotlight jumps. */
@@ -32,16 +40,33 @@ export function isLaunchTestLockedByTour(tourStep: number): boolean {
   return tourStep >= 19 && tourStep <= 25;
 }
 
+/** Inline ready/repair badge for tour copy — same icon + color convention used everywhere else
+ * (DataTable, TerrainModal, ReunionModal): CheckShape/green for ready, Ban/amber for repair. */
+function StatusLabel({ ready }: { ready: boolean }) {
+  const Icon = ready ? CheckShape : Ban;
+  return (
+    <span
+      className={
+        'inline-flex items-center gap-1 align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-gray-900 text-white'
+      }
+    >
+      <Icon width={11} height={11} />
+      {ready ? 'Prêt à partir' : 'À réparer'}
+    </span>
+  );
+}
+
 type TourStepDef = {
   target: string;
-  text: string;
+  text: ReactNode;
   /** 'ok' = popover shows a button the student clicks to move on. 'wait' = no button; advancing
    * that step is wired into the real action's handler elsewhere (see each component's tourStep check). */
   advanceOn: 'ok' | 'wait';
   /** Gap between the highlight ring and the target's own edge. Defaults to PAD. */
   padding?: number;
-  /** Popover position relative to the target. Defaults to 'auto' (below, or above if no room). */
-  placement?: 'auto' | 'right';
+  /** Popover position relative to the target. Defaults to 'auto' (below, or above if no room).
+   * 'top' forces above regardless of available space. */
+  placement?: 'auto' | 'right' | 'top';
   /** Step-2 tour only: shows Chevron back/next controls instead of the step-1 tour's plain OK
    * button. */
   chevronNav?: boolean;
@@ -68,7 +93,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   3: {
     target: '[data-tour="light-button"]',
-    text: 'Allume les phares du robot avec ce bouton, regarde le résultat, puis éteins-les à nouveau.',
+    text: 'Allume la lumière du robot avec ce bouton, regarde le résultat, puis éteins-la à nouveau.',
     advanceOn: 'wait',
   },
   4: {
@@ -83,7 +108,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   6: {
     target: '[data-tour="edit-modal"]',
-    text: "Indique si la lumière fonctionne, d'après ce que tu as observé — c'est la seule chose modifiable ici pour l'instant.",
+    text: "Indique si la lumière fonctionne, d'après ce que tu as observé.",
     advanceOn: 'wait',
   },
   7: {
@@ -93,7 +118,13 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   8: {
     target: '[data-tour="prediction-row"]',
-    text: 'Donne maintenant ton pronostic pour ce robot.',
+    text: (
+      <>
+        Donne maintenant ton pronostic pour ce robot. Penses-tu qu'il est <StatusLabel ready /> ou{' '}
+        <StatusLabel ready={false} />
+        {'\u00A0?'}
+      </>
+    ),
     advanceOn: 'wait',
   },
 
@@ -101,7 +132,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   // 19 has no chevronNav: it's a plain instruction with nothing to click yet (see PopoverCard).
   19: {
     target: '[data-tour="robot-selector"]',
-    text: 'Sélectionne un robot pour commencer la visite.',
+    text: "Sélectionne d'abord un robot.",
     advanceOn: 'wait',
   },
   20: {
@@ -131,7 +162,11 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
     // real leaf card auto-sizes to its content and can render taller, spilling past that
     // estimate — highlighting the wrapper alone clips the bottom of the card off.
     target: '[data-testid="rf__node-l1"] .node-card',
-    text: "Ici, plus de question : c'est une décision finale. Le robot est classé « Prêt à partir ».",
+    text: (
+      <>
+        Ici, plus de question : c'est une décision finale. Le robot est classé <StatusLabel ready />.
+      </>
+    ),
     advanceOn: 'ok',
     chevronNav: true,
     back: 22,
@@ -146,7 +181,12 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   25: {
     // Same wrapper-vs-card sizing note as step 23 above.
     target: '[data-testid="rf__node-l2"] .node-card',
-    text: "Dans ce cas, le robot est classé « À réparer ». Quel que soit le chemin, l'arbre se termine toujours par une décision.",
+    text: (
+      <>
+        Dans ce cas, le robot est classé <StatusLabel ready={false} />. Quel que soit le chemin, l'arbre se termine
+        toujours par une décision.
+      </>
+    ),
     advanceOn: 'ok',
     chevronNav: true,
     back: 24,
@@ -166,13 +206,67 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
     back: 26,
     next: TOUR2_INTERLUDE,
   },
+
+  // ── Step-4 tour: how to edit the tree ─────────────────────────────────────────────
+  40: {
+    target: '[data-testid="rf__node-d1"]',
+    text: 'Tu peux modifier la question, selon ce qui te semble pertinent.',
+    advanceOn: 'ok',
+    chevronNav: true,
+  },
+  41: {
+    // Same wrapper-vs-card sizing note as the step-2 tour's leaf steps above.
+    target: '[data-testid="rf__node-l1"] .node-card',
+    text: 'Tu peux aussi modifier la décision qui est prise.',
+    advanceOn: 'ok',
+    chevronNav: true,
+    back: 40,
+  },
+  42: {
+    target: '[data-testid="rf__node-l1"] [data-tour="leaf-placements"]',
+    text: "Tu peux voir quels robots sont arrivés ici avec l'arbre, et s'ils sont bien ou mal classés.",
+    advanceOn: 'ok',
+    chevronNav: true,
+    back: 41,
+    next: TOUR3_INTERLUDE,
+  },
+
+  // ── Step-5 tour: badly-classified new robots, then deleting a leaf to add a new question ──────
+  [TOUR4_STEP]: {
+    target: '[data-tour="mismatched-row"]',
+    text: 'Certains des nouveaux robots ne sont pas triés correctement...',
+    advanceOn: 'ok',
+    placement: 'top',
+  },
+  [TOUR4_STEP_LEAF]: {
+    // Same wrapper-vs-card sizing note as the step-2/step-4 tours' leaf steps above.
+    target: '[data-testid="rf__node-l1"] .node-card',
+    text: (
+      <>
+        Peut-être qu'une seule question ne suffit pas, il faut en poser une deuxième pour trier correctement les
+        robots...
+        <br />
+        Clique sur{' '}
+        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white border border-gray-200 text-gray-400 align-text-bottom">
+          <Xmark width={12} height={12} />
+        </span>{' '}
+        pour supprimer la décision et poser une question ici à la place.
+      </>
+    ),
+    advanceOn: 'ok',
+    placement: 'right',
+  },
 };
 
-type Rect = { top: number; left: number; width: number; height: number };
+export type Rect = { top: number; left: number; width: number; height: number };
 
 /** Tracks a `[data-tour="..."]` target's viewport rect via rAF polling — robust to modal-open
- * animations and layout shifts that a ResizeObserver alone wouldn't catch. */
-function useTourTargetRect(selector: string | null): Rect | null {
+ * animations and layout shifts that a ResizeObserver alone wouldn't catch. When the selector
+ * matches more than one element (e.g. several wrong table rows), the spotlight covers their union
+ * — every match at once — rather than just the first. Exported for reuse by anything else that
+ * needs to anchor UI to a `[data-tour="..."]` element outside the tour itself (see
+ * Step7IntroModal's pre-build card). */
+export function useTourTargetRect(selector: string | null): Rect | null {
   const [rect, setRect] = useState<Rect | null>(null);
 
   useEffect(() => {
@@ -182,13 +276,28 @@ function useTourTargetRect(selector: string | null): Rect | null {
     }
     let raf = 0;
     const measure = () => {
-      const el = document.querySelector<HTMLElement>(selector);
-      if (el) {
-        const r = el.getBoundingClientRect();
+      const els = document.querySelectorAll<HTMLElement>(selector);
+      if (els.length > 0) {
+        let top = Infinity;
+        let left = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        els.forEach(el => {
+          const r = el.getBoundingClientRect();
+          top = Math.min(top, r.top);
+          left = Math.min(left, r.left);
+          right = Math.max(right, r.left + r.width);
+          bottom = Math.max(bottom, r.top + r.height);
+        });
+        const next = { top, left, width: right - left, height: bottom - top };
         setRect(prev =>
-          prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height
+          prev &&
+          prev.top === next.top &&
+          prev.left === next.left &&
+          prev.width === next.width &&
+          prev.height === next.height
             ? prev
-            : { top: r.top, left: r.left, width: r.width, height: r.height }
+            : next
         );
       } else {
         setRect(null);
@@ -223,6 +332,12 @@ function tourStepOwnerStep(tourStep: number): number | null {
   if ((tourStep >= 19 && tourStep <= 27) || tourStep === TOUR2_INTERLUDE) {
     return 2;
   }
+  if ((tourStep >= 40 && tourStep <= 42) || tourStep === TOUR3_INTERLUDE) {
+    return 4;
+  }
+  if (tourStep >= TOUR4_STEP && tourStep <= TOUR4_STEP_LEAF) {
+    return 5;
+  }
   return null;
 }
 
@@ -233,6 +348,8 @@ export function TourOverlay() {
     setTourStep,
     setTourSeen,
     setTour2Seen,
+    setTour3Seen,
+    setTour4Seen,
     controledRobot,
     robotConfigs,
     physicalRobotData,
@@ -316,7 +433,21 @@ export function TourOverlay() {
     setTourStep(0);
   };
 
-  const handleOk = stepDef ? () => setTourStep(stepDef.next ?? tourStep + 1) : () => {};
+  const finishTour3 = () => {
+    setTour3Seen(true);
+    setTourStep(0);
+  };
+
+  const finishTour4 = () => {
+    setTour4Seen(true);
+    setTourStep(0);
+  };
+
+  // The step-5 tour has no interlude modal after it — its last popover's own "OK" ends the tour
+  // directly instead of advancing to another TOUR_STEPS entry.
+  const handleOk = stepDef
+    ? () => (tourStep === TOUR4_STEP_LEAF ? finishTour4() : setTourStep(stepDef.next ?? tourStep + 1))
+    : () => {};
   const handleBack = stepDef?.back !== undefined ? () => setTourStep(stepDef.back!) : undefined;
 
   return (
@@ -372,7 +503,7 @@ export function TourOverlay() {
             />
 
             {/* Popover: 'right' places it beside the target, vertically centered; 'auto' places it
-                below the target if there's room, otherwise above. */}
+                below the target if there's room, otherwise above; 'top' always places it above. */}
             {(() => {
               const placement = stepDef.placement ?? 'auto';
 
@@ -396,7 +527,7 @@ export function TourOverlay() {
               }
 
               const spaceBelow = window.innerHeight - (rect.top + rect.height + pad);
-              const placeBelow = spaceBelow > 140;
+              const placeBelow = placement !== 'top' && spaceBelow > 140;
               const centerX = rect.left + rect.width / 2;
               const clampedLeft = Math.min(
                 Math.max(centerX, POPOVER_WIDTH / 2 + 12),
@@ -428,7 +559,7 @@ export function TourOverlay() {
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_1}
-        text="Bien joué ! Continue maintenant à remplir les autres capteurs de ce robot (capteurs de distance, moteur, batterie) en cliquant à nouveau sur sa ligne dans le tableau."
+        text="Bien joué ! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant à nouveau sur sa ligne dans le tableau."
         onDismiss={() => setTourStep(TOUR_WAIT_ROW_COMPLETE)}
       />
 
@@ -442,6 +573,12 @@ export function TourOverlay() {
         isOpen={tourStep === TOUR2_INTERLUDE}
         text="Teste maintenant chaque robot, un par un, pour voir comment le programme les classe."
         onDismiss={finishTour2}
+      />
+
+      <TourInterludeModal
+        isOpen={tourStep === TOUR3_INTERLUDE}
+        text="Essaie de trouver un paramètre qui est lié au résultat sur le terrain, et de choisir la question en fonction."
+        onDismiss={finishTour3}
       />
     </>
   );
@@ -493,7 +630,7 @@ function TourInterludeModal({ isOpen, text, onDismiss }: { isOpen: boolean; text
       <Modal.Backdrop isDismissable={false} isKeyboardDismissDisabled>
         <Modal.Container size="md">
           <Modal.Dialog>
-            <Modal.Body className="flex flex-col gap-3 pt-6">
+            <Modal.Body className="flex flex-col gap-3">
               <p className="text-gray-600 text-sm">{text}</p>
             </Modal.Body>
             <Modal.Footer>

@@ -19,6 +19,18 @@ window.addEventListener('unhandledrejection', event => {
   }
 });
 
+// @xyflow/react (the decision tree canvas) watches node/pane sizes via ResizeObserver, and the
+// step-7 algorithm auto-build fires many rapid, back-to-back layout changes (nodes sliding in,
+// fitView adjusting) as it grows the tree. That's exactly the pattern that trips the browser's
+// ResizeObserver loop-protection, which reports it as a genuine `error` event on window even
+// though nothing actually failed — the observer just gets debounced to the next frame. Harmless,
+// but spams the console every time, so it's silenced here the same way as the toast rejection above.
+window.addEventListener('error', event => {
+  if (event.message === 'ResizeObserver loop completed with undelivered notifications.') {
+    event.stopImmediatePropagation();
+  }
+});
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />

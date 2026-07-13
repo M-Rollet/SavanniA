@@ -69,6 +69,13 @@ export class Thymio2DeviceManager implements TdmController {
     }
   };
 
+  release = async (uuid: string) => {
+    const client = this.getRobotByUuid(uuid);
+    if (client) {
+      await client.release(uuid);
+    }
+  };
+
   /**
    * Creates a ClientDeviceManager for each host, connects it to TDM,
    * and stores it in the `clients` observable.
