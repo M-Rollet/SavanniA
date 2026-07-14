@@ -447,6 +447,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Nouveaux',
     features: {
       ...NO_FEATURES,
+      teamSwitch: true,
+      manualOp: true,
       treeVisible: true,
       treeEditable: true,
       dataTable: true,
@@ -474,7 +476,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Externe',
     features: {
       ...NO_FEATURES,
-      teamSwitch: false,
+      teamSwitch: true,
+      manualOp: true,
       treeVisible: true,
       treeEditable: true,
       dataTable: true,
