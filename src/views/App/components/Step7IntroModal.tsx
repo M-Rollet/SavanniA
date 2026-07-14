@@ -339,7 +339,7 @@ const P6_QB = {
 
 const HEADINGS = [
   'Trop de robots pour trier à la main',
-  'Bien trié ou mal trié ?',
+  'Bien ou mal trié ?',
   'Le meilleur tri',
   'Trié ou mélangé ?',
   "Le lien avec l'arbre",

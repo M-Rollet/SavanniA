@@ -650,7 +650,11 @@ sub check_black_zone
     if black_state == 1 and previous_black_state == 0 then
         black_counter += 1
         if black_counter == 1 then
-            callsub light_on
+            if light_working == 1 then
+                callsub light_on
+            else
+                callsub fail_light_seq
+            end
         elseif black_counter == 2 then
             if light_working == 0 then
                 callsub beep_fail

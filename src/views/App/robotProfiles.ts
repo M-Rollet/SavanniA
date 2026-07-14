@@ -19,12 +19,19 @@ export type Profile = {
 export const MIN_ROBOTS = 4;
 export const MAX_ROBOTS = 6; // === CORE_PROFILES.length
 
-/** Steps 1-4 only ever work with the first MIN_ROBOTS configured robots (by priority/array
- * position — see CORE_PROFILE_DEFS above), regardless of how many are actually connected. Any
- * extra ones stay unavailable until later steps (introduced separately). Generic so it works
- * directly on `RobotConfig[]` without this module needing to import that type. */
-export function getActiveRobotConfigs<T>(robotConfigs: T[], stepIndex: number): T[] {
-  return stepIndex >= 1 && stepIndex <= 4 ? robotConfigs.slice(0, MIN_ROBOTS) : robotConfigs;
+/** Steps 1-4 only ever work with the first MIN_ROBOTS ground-truth slots (by profileIndex — see
+ * CORE_PROFILE_DEFS above), regardless of how many are actually connected or what order they were
+ * configured in. Any extra ones stay unavailable until later steps (introduced separately).
+ * Generic so it works directly on `RobotConfig[]` without this module needing to import that
+ * type. Sorted by profileIndex so table/terrain order tracks slot number even if array insertion
+ * order doesn't (e.g. a freed slot recycled by a later-added robot). */
+export function getActiveRobotConfigs<T extends { profileIndex: number }>(
+  robotConfigs: T[],
+  stepIndex: number
+): T[] {
+  return stepIndex >= 1 && stepIndex <= 4
+    ? robotConfigs.filter(r => r.profileIndex < MIN_ROBOTS).sort((a, b) => a.profileIndex - b.profileIndex)
+    : robotConfigs;
 }
 
 // Priority order: success anchor + the two discoveries first, then the minimal-
@@ -142,16 +149,16 @@ export function getAnswerForQuestion(questionId: string, cfg: ColorConfig): 'yes
 
 /**
  * Returns the set of `${uuid}-${criterion}` keys whose recorded test result doesn't match
- * the robot's ground-truth config (positional mapping: robotConfigs[i] <-> CORE_PROFILES[i]).
+ * the robot's ground-truth config (CORE_PROFILES[r.profileIndex] — see RobotConfig.profileIndex).
  * Only flags criteria that have actually been filled in — blanks aren't "wrong".
  */
 export function getWrongCriteria(
-  robotConfigs: { uuid: string }[],
+  robotConfigs: { uuid: string; profileIndex: number }[],
   physicalRobotData: Record<string, RobotEntry>
 ): Set<string> {
   const wrong = new Set<string>();
-  robotConfigs.forEach((r, index) => {
-    const cfg = CORE_PROFILES[index]?.config;
+  robotConfigs.forEach(r => {
+    const cfg = CORE_PROFILES[r.profileIndex]?.config;
     const entry = physicalRobotData[r.uuid];
     if (!cfg || !entry) {
       return;
@@ -167,7 +174,7 @@ export function getWrongCriteria(
 }
 
 export function hasWrongCriteria(
-  robotConfigs: { uuid: string }[],
+  robotConfigs: { uuid: string; profileIndex: number }[],
   physicalRobotData: Record<string, RobotEntry>
 ): boolean {
   return getWrongCriteria(robotConfigs, physicalRobotData).size > 0;
@@ -175,16 +182,16 @@ export function hasWrongCriteria(
 
 /**
  * Returns the set of robot uuids whose step-3 terrain observation (ready/repair) doesn't match
- * the ground truth (positional mapping: robotConfigs[i] <-> CORE_PROFILES[i]). Only flags
+ * the ground truth (CORE_PROFILES[r.profileIndex] — see RobotConfig.profileIndex). Only flags
  * robots that have actually been given an observation — unset ones aren't "wrong" yet.
  */
 export function getWrongObservations(
-  robotConfigs: { uuid: string }[],
+  robotConfigs: { uuid: string; profileIndex: number }[],
   physicalRobotData: Record<string, RobotEntry>
 ): Set<string> {
   const wrong = new Set<string>();
-  robotConfigs.forEach((r, index) => {
-    const expected = CORE_PROFILES[index]?.expectedCategory;
+  robotConfigs.forEach(r => {
+    const expected = CORE_PROFILES[r.profileIndex]?.expectedCategory;
     const observed = physicalRobotData[r.uuid]?.observation?.category;
     if (expected && observed && observed !== expected) {
       wrong.add(r.uuid);
@@ -194,7 +201,7 @@ export function getWrongObservations(
 }
 
 export function hasWrongObservations(
-  robotConfigs: { uuid: string }[],
+  robotConfigs: { uuid: string; profileIndex: number }[],
   physicalRobotData: Record<string, RobotEntry>
 ): boolean {
   return getWrongObservations(robotConfigs, physicalRobotData).size > 0;

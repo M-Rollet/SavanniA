@@ -55,11 +55,11 @@ export function TerrainModal() {
       return [];
     }
     const lines: string[] = [];
-    robotConfigs.forEach((r, index) => {
+    robotConfigs.forEach(r => {
       if (!wrongUuids.has(r.uuid)) {
         return;
       }
-      const profile = CORE_PROFILES[index];
+      const profile = CORE_PROFILES[r.profileIndex];
       const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
       if (!profile || !colorDef) {
         return;

@@ -1,8 +1,8 @@
 import { useState, useEffect, Fragment } from 'react';
 import { Button, Modal, useOverlayState } from '@heroui/react';
 import { Xmark, Gear, Bulb } from '@gravity-ui/icons';
-import { useScenario, ROBOT_COLORS, type RobotColor, type RobotConfig } from '../ScenarioContext';
-import { MIN_ROBOTS } from '../robotProfiles';
+import { useScenario, ROBOT_COLORS, type RobotColor } from '../ScenarioContext';
+import { MIN_ROBOTS, MAX_ROBOTS } from '../robotProfiles';
 
 const PASSWORD = 'mobots';
 
@@ -67,9 +67,34 @@ export function SettingsOverlay() {
     return () => clearInterval(id);
   }, [isSettingsOpen, unlocked, user]);
 
+  // Preserves each robot's profileIndex (its ground-truth slot — see RobotConfig.profileIndex)
+  // no matter how colors get shuffled around here, so a settings-only recolor/swap never touches
+  // the step-1/3 table checks. Recoloring an already-configured robot updates it in place; if
+  // another robot already holds the target color, the two colors are swapped (also in place —
+  // neither robot's profileIndex moves). Only a genuinely new uuid gets a fresh entry, taking the
+  // lowest profileIndex not already in use.
   const assignColor = (uuid: string, color: RobotColor) => {
-    const next: RobotConfig[] = [...robotConfigs.filter(r => r.uuid !== uuid && r.color !== color), { uuid, color }];
-    setRobotConfigs(next);
+    const current = robotConfigs.find(r => r.uuid === uuid);
+    if (current) {
+      const holder = robotConfigs.find(r => r.uuid !== uuid && r.color === color);
+      const next = robotConfigs.map(r => {
+        if (r.uuid === uuid) {
+          return { ...r, color };
+        }
+        if (holder && r.uuid === holder.uuid) {
+          return { ...r, color: current.color };
+        }
+        return r;
+      });
+      setRobotConfigs(next);
+      return;
+    }
+    const usedSlots = new Set(robotConfigs.map(r => r.profileIndex));
+    let profileIndex = 0;
+    while (usedSlots.has(profileIndex) && profileIndex < MAX_ROBOTS) {
+      profileIndex++;
+    }
+    setRobotConfigs([...robotConfigs, { uuid, color, profileIndex }]);
   };
 
   const removeRobot = (uuid: string) => {
@@ -162,17 +187,25 @@ export function SettingsOverlay() {
                                 {ROBOT_COLORS.map(c => {
                                   const isAssignedHere = assigned?.color === c.id;
                                   const takenByOther = usedColors.has(c.id) && !isAssignedHere;
+                                  // A robot that's already configured has a color of its own to trade, so
+                                  // clicking another robot's color swaps the two instead of being blocked.
+                                  // A brand-new robot has nothing to trade back, so it stays blocked, same
+                                  // as before.
+                                  const canSwap = takenByOther && !!assigned;
+                                  const blocked = takenByOther && !canSwap;
                                   return (
                                     <button
                                       key={c.id}
-                                      title={c.label}
-                                      onClick={() => !takenByOther && assignColor(uuid, c.id)}
+                                      title={canSwap ? 'Échanger les couleurs' : c.label}
+                                      onClick={() => !blocked && assignColor(uuid, c.id)}
                                       style={{ backgroundColor: c.hex }}
                                       className={`w-7 h-7 rounded-full border-2 transition-all ${
                                         isAssignedHere
                                           ? 'border-gray-800 scale-115'
-                                          : takenByOther
+                                          : blocked
                                           ? 'opacity-25 cursor-not-allowed border-transparent'
+                                          : canSwap
+                                          ? 'opacity-70 border-dashed border-gray-400 hover:border-gray-600 hover:scale-105'
                                           : 'border-transparent hover:border-gray-400 hover:scale-105'
                                       }`}
                                     />

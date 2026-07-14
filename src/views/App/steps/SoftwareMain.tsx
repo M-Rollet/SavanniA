@@ -246,9 +246,9 @@ export function SoftwareMain() {
   }, [stepIndex, setRobotTeams]);
 
   // Any physically-connected robot that has never been run through the lab tree (steps 1-2) gets
-  // its lab + terrain data completed straight from its ground-truth profile (positional:
-  // robotConfigs[i] <-> CORE_PROFILES[i], same convention as robotProfiles.ts), as soon as terrain
-  // testing starts (step 3 onward). This covers both the 5th/6th "new robots" slots — steps 1-4
+  // its lab + terrain data completed straight from its ground-truth profile (CORE_PROFILES[r.profileIndex],
+  // same convention as robotProfiles.ts), as soon as terrain testing starts (step 3 onward). This
+  // covers both the 5th/6th "new robots" slots — steps 1-4
   // never expose them via activeRobotConfigs, so they're always untested going in — and a robot
   // physically swapped in later for one of the original four (e.g. a broken unit replaced by a
   // spare): there's no way back to steps 1-2's UI for it once the class has moved on, so this is
@@ -262,8 +262,8 @@ export function SoftwareMain() {
       return;
     }
     let physicalUpdates: Record<string, RobotEntry> | null = null;
-    robotConfigs.forEach((r, index) => {
-      const profile = CORE_PROFILES[index];
+    robotConfigs.forEach(r => {
+      const profile = CORE_PROFILES[r.profileIndex];
       if (!profile || physicalRobotData[r.uuid]?.tested) {
         return;
       }
@@ -281,8 +281,8 @@ export function SoftwareMain() {
   }, [stepIndex, robotConfigs, physicalRobotData, setPhysicalRobotData]);
 
   // "De nouveaux robots" step: when the 5th/6th core slots have no real physically-configured
-  // robot, a synthetic stand-in fills their place instead (positional: robotConfigs[i] <->
-  // CORE_PROFILES[i] — see DataTable.tsx and DecisionTree.tsx, which both fold newRobotsDataset in
+  // robot, a synthetic stand-in fills their place instead (keyed by profileIndex — see
+  // DataTable.tsx and DecisionTree.tsx, which both fold newRobotsDataset in
   // alongside real robots for this step). Real robots in those slots are handled by the effect
   // above (not gated the same way — they're already complete by the time this step is reached).
   // Each slot only ever writes once — the "already there?" check makes re-running this on every
@@ -298,7 +298,7 @@ export function SoftwareMain() {
     const nicknamePool = [...NEW_ROBOT_NICKNAMES].sort(() => Math.random() - 0.5);
     [MIN_ROBOTS, MIN_ROBOTS + 1].forEach(profileIndex => {
       const profile = CORE_PROFILES[profileIndex];
-      if (!profile || robotConfigs[profileIndex]) {
+      if (!profile || robotConfigs.some(r => r.profileIndex === profileIndex)) {
         return;
       }
       const id = `new-robot-${profileIndex + 1}`;
@@ -551,8 +551,8 @@ export function SoftwareMain() {
           connectingRef.current.delete(uuid);
           setStatuses(prev => ({ ...prev, [uuid]: 'ready' }));
           const isField = robotTeamsRef.current[uuid] === 'terrain';
-          const profileIndex = robotConfigsRef.current.findIndex(r => r.uuid === uuid);
-          const cfg = CORE_PROFILES[profileIndex]?.config;
+          const profileIndex = robotConfigsRef.current.find(r => r.uuid === uuid)?.profileIndex;
+          const cfg = profileIndex !== undefined ? CORE_PROFILES[profileIndex]?.config : undefined;
           const initVars = new Map<string, number[]>([
             ['field_mode', [isField ? 1 : 0]],
             ['to_repair', [computeToRepair(uuid)]],
@@ -678,8 +678,8 @@ export function SoftwareMain() {
       if (!questionId || !controledRobot) {
         return;
       }
-      const profileIndex = robotConfigs.findIndex(r => r.uuid === controledRobot);
-      const cfg = CORE_PROFILES[profileIndex]?.config;
+      const profileIndex = robotConfigs.find(r => r.uuid === controledRobot)?.profileIndex;
+      const cfg = profileIndex !== undefined ? CORE_PROFILES[profileIndex]?.config : undefined;
       if (!cfg) {
         return;
       }
@@ -845,7 +845,7 @@ export function SoftwareMain() {
               {stepDef.features.teamSwitch && (
                 <Button variant="outline" size="sm" isDisabled={testing} onPress={() => setTeamModalOpen(true)}>
                   <ArrowRightArrowLeft />
-                  Échanges robots
+                  Tests terrain
                 </Button>
               )}
 

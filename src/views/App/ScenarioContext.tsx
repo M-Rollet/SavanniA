@@ -29,6 +29,10 @@ export type RobotColor = (typeof ROBOT_COLORS)[number]['id'];
 export type RobotConfig = {
   uuid: string;
   color: RobotColor;
+  /** Stable ground-truth slot (index into CORE_PROFILES), assigned once when the robot is first
+   * configured and never touched again by recoloring, swapping, or removing other robots — see
+   * SettingsOverlay.assignColor. */
+  profileIndex: number;
 };
 
 export type RobotTeam = 'terrain' | 'bureau';
@@ -173,7 +177,9 @@ const ScenarioContext = createContext<ScenarioState | null>(null);
 export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [stepIndex, setStepIndex] = useLocalStorage<number>('scenario:stepIndex', 0);
   const [controledRobot, setControledRobot] = useLocalStorage<string>('scenario:robot', '');
-  const [robotConfigs, setRobotConfigs] = useLocalStorage<RobotConfig[]>('scenario:robots', []);
+  // v2: RobotConfig gained profileIndex (see its definition) — old-shape data under the
+  // unversioned key predates it and is deliberately not migrated, just left behind.
+  const [robotConfigs, setRobotConfigs] = useLocalStorage<RobotConfig[]>('scenario:robots:v2', []);
   const activeRobotConfigs = useMemo(() => getActiveRobotConfigs(robotConfigs, stepIndex), [robotConfigs, stepIndex]);
   const [robotTeams, setRobotTeams] = useLocalStorage<Record<string, RobotTeam>>('scenario:teams', {});
   const [physicalRobotData, setPhysicalRobotData] = useLocalStorage<Record<string, RobotEntry>>(
