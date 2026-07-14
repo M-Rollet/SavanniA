@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
 import { ArrowRight, Check, Star, Play } from '@gravity-ui/icons';
@@ -5,6 +6,7 @@ import { useScenario } from '../ScenarioContext';
 import { STEP_DEFS, getStepDef } from '../steps/stepDefinitions';
 import { hasWrongCriteria } from '../robotProfiles';
 import { TOUR_WAIT_ROW_COMPLETE } from './TourOverlay';
+import { FirstTreeModal } from './FirstTreeModal';
 import step1 from '../../../assets/step_1.png';
 import step2 from '../../../assets/step_2.png';
 import step3 from '../../../assets/step_3.png';
@@ -44,12 +46,19 @@ export function TimelinePanel() {
   const isLastStep = stepIndex >= STEP_DEFS.length;
   const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested === true).length;
 
+  // A reflection beat on the first tree, shown right when leaving step 2 — see FirstTreeModal.
+  const [firstTreeModalOpen, setFirstTreeModalOpen] = useState(false);
+
   // Step 1's completeness gate (canAdvance) doesn't check correctness — do that here, right before
   // moving on, so a full-but-wrong table blocks advancement with an explanation instead of letting
   // a student carry mistaken manual observations into step 2's tree test.
   const handleAdvance = () => {
     if (stepIndex === 1 && hasWrongCriteria(robotConfigs, physicalRobotData)) {
       setDataCheckFailed(true);
+      return;
+    }
+    if (stepIndex === 2) {
+      setFirstTreeModalOpen(true);
       return;
     }
     advanceStep();
@@ -131,6 +140,14 @@ export function TimelinePanel() {
           )}
         </div>
       )}
+
+      <FirstTreeModal
+        isOpen={firstTreeModalOpen}
+        onConfirm={() => {
+          setFirstTreeModalOpen(false);
+          advanceStep();
+        }}
+      />
     </div>
   );
 }
