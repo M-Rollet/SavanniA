@@ -788,7 +788,7 @@ export function SoftwareMain() {
                   </span>
                 ) : (
                   <>
-                    <div className="flex gap-1.5 items-center">
+                    <div className="flex gap-2 items-center">
                       {controllableRobots.map(({ uuid, color }) => {
                         const c = ROBOT_COLORS.find(x => x.id === color)!;
                         const ds = displayState(statuses[uuid]);
@@ -1023,7 +1023,7 @@ function RobotDot({
   const clickable = ds === 'ready' && !locked;
 
   return (
-    <div className="relative w-7 h-7" title={`${label} — ${ds}`}>
+    <div className="relative w-8 h-8" title={`${label} — ${ds}`}>
       {/* Spinning ring while connecting */}
       {ds === 'connecting' && (
         <span
@@ -1039,12 +1039,12 @@ function RobotDot({
           backgroundColor: hex,
           opacity: ds === 'ready' ? (locked && !selected ? 0.35 : 1) : 0.35,
         }}
-        className={`absolute inset-0 rounded-full border-2 flex items-center justify-center
-          text-white text-xs font-bold leading-none transition-all
+        className={`absolute inset-0 rounded-full border-3 flex items-center justify-center
+          text-white text-sm font-bold leading-none transition-all
           ${
             clickable
               ? selected
-                ? 'border-gray-800 scale-110 shadow cursor-pointer'
+                ? 'border-gray-900 scale-110 shadow cursor-pointer'
                 : 'border-transparent hover:border-gray-400 hover:scale-105 cursor-pointer'
               : 'border-transparent cursor-default'
           }`}
