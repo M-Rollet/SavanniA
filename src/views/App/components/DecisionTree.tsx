@@ -1163,7 +1163,7 @@ function AlgorithmCanvas({
    * newly-arrived robot still works fine against a frozen tree; it just doesn't trigger a rebuild. */
   frozen?: boolean;
 }) {
-  const { setAlgorithmTree, algorithmBuildArmed } = useScenario();
+  const { setAlgorithmTree, algorithmBuildArmed, setStep7DemoActive } = useScenario();
 
   // previewMode (Step7IntroModal's throwaway demo) never touches storage — see the demo/real
   // split at SoftwareMain's algorithmMode branch.
@@ -1180,6 +1180,9 @@ function AlgorithmCanvas({
   const edgesRef = useRef(edges);
   const datasetRef = useRef(dataset);
   const autoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // Tracks whether previewMode's own auto-build has been seeded, so the completion effect below
+  // (which watches autoBuildQueue emptying out) can tell "finished" apart from "hasn't started yet".
+  const demoBuildStartedRef = useRef(false);
   nodesRef.current = nodes;
   edgesRef.current = edges;
   datasetRef.current = dataset;
@@ -1208,7 +1211,21 @@ function AlgorithmCanvas({
     }
     const id = addFirstChild();
     setAutoBuildQueue([id]);
+    demoBuildStartedRef.current = true;
   }, [edges.length, addFirstChild, algorithmBuildArmed, frozen]);
+
+  // previewMode is a one-shot hands-off animation (Step7IntroModal's demo, mounted with no
+  // Controls and pointer-events disabled — see the wrapper div below). Once its own auto-build
+  // queue has drained, hand control back to the real canvas (SoftwareMain's step7DemoActive
+  // swap) so the student gets an interactive tree again. Without this, nothing ever flips
+  // step7DemoActive back off: the non-interactive demo stays mounted forever and the real canvas
+  // — the only one that persists to localStorage — never gets a chance to build or save anything.
+  useEffect(() => {
+    if (!previewMode || !demoBuildStartedRef.current || autoBuildQueue.length > 0) {
+      return;
+    }
+    setStep7DemoActive(false);
+  }, [autoBuildQueue, previewMode, setStep7DemoActive]);
 
   const onPlacementClick = useCallback(
     (uuid: string) => {
