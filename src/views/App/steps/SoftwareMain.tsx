@@ -25,6 +25,7 @@ import {
   EMPTY_ROBOT_ENTRY,
   questionIdToCriterion,
   hasAllCriteria,
+  classifyWithAlgoTree,
   type RobotEntry,
   type ExternalRobotEntry,
 } from './stepDefinitions';
@@ -105,6 +106,7 @@ export function SoftwareMain() {
     stepIndex,
     physicalRobotData,
     setPhysicalRobotData,
+    algorithmTree,
     setTreeAccuracy,
     registerStopTesting,
     externalDataset,
@@ -191,6 +193,8 @@ export function SoftwareMain() {
   const physicalRobotDataRef = useRef(physicalRobotData);
   const statusesRef = useRef(statuses);
   const fieldTestRef = useRef(stepDef.features.fieldTest);
+  const algorithmModeRef = useRef(stepDef.features.algorithmMode);
+  const algorithmTreeRef = useRef(algorithmTree);
   const correctedCriteriaRef = useRef(correctedCriteria);
   useLayoutEffect(() => {
     testingRef.current = testing;
@@ -217,6 +221,12 @@ export function SoftwareMain() {
     fieldTestRef.current = stepDef.features.fieldTest;
   }, [stepDef.features.fieldTest]);
   useLayoutEffect(() => {
+    algorithmModeRef.current = stepDef.features.algorithmMode;
+  }, [stepDef.features.algorithmMode]);
+  useLayoutEffect(() => {
+    algorithmTreeRef.current = algorithmTree;
+  }, [algorithmTree]);
+  useLayoutEffect(() => {
     correctedCriteriaRef.current = correctedCriteria;
   }, [correctedCriteria]);
 
@@ -235,41 +245,60 @@ export function SoftwareMain() {
     prevStepIndexRef.current = stepIndex;
   }, [stepIndex, setRobotTeams]);
 
-  // "De nouveaux robots" step: the 5th/6th core profiles' lab + terrain data arrives ready-made,
-  // no PRIMM walk needed for them — into physicalRobotData if that slot has a real, physically-
-  // configured robot (positional: robotConfigs[i] <-> CORE_PROFILES[i], same convention as
-  // robotProfiles.ts), or into newRobotsDataset as a synthetic stand-in otherwise (see
-  // DataTable.tsx and DecisionTree.tsx, which both fold newRobotsDataset in alongside real
-  // robots for this step). Each slot only ever writes once — the "already there?" checks make
-  // re-running this on every render a no-op once done. Gated on newRobotsArmed (set by
-  // StepIntroModal once the step-5 intro is dismissed) so the new rows appear — and fly in — right
-  // after the student sees that modal, instead of silently existing before they ever read it.
+  // Any physically-connected robot that has never been run through the lab tree (steps 1-2) gets
+  // its lab + terrain data completed straight from its ground-truth profile (positional:
+  // robotConfigs[i] <-> CORE_PROFILES[i], same convention as robotProfiles.ts), as soon as terrain
+  // testing starts (step 3 onward). This covers both the 5th/6th "new robots" slots — steps 1-4
+  // never expose them via activeRobotConfigs, so they're always untested going in — and a robot
+  // physically swapped in later for one of the original four (e.g. a broken unit replaced by a
+  // spare): there's no way back to steps 1-2's UI for it once the class has moved on, so this is
+  // the only way it ever gets data. Robots that DID go through the lab normally already have
+  // `tested: true` (steps 1-2's own canAdvance guarantees that before step 3 is reachable), so
+  // they're skipped here — their terrain observation still only comes from an actual TerrainModal
+  // run. Each robot only ever gets filled once — the `tested` check makes re-running this on every
+  // render a no-op afterward.
+  useEffect(() => {
+    if (stepIndex < 3) {
+      return;
+    }
+    let physicalUpdates: Record<string, RobotEntry> | null = null;
+    robotConfigs.forEach((r, index) => {
+      const profile = CORE_PROFILES[index];
+      if (!profile || physicalRobotData[r.uuid]?.tested) {
+        return;
+      }
+      physicalUpdates = physicalUpdates ?? { ...physicalRobotData };
+      physicalUpdates[r.uuid] = {
+        ...EMPTY_ROBOT_ENTRY,
+        testResults: { ...profile.config },
+        tested: true,
+        observation: { category: profile.expectedCategory, notes: '' },
+      };
+    });
+    if (physicalUpdates) {
+      setPhysicalRobotData(physicalUpdates);
+    }
+  }, [stepIndex, robotConfigs, physicalRobotData, setPhysicalRobotData]);
+
+  // "De nouveaux robots" step: when the 5th/6th core slots have no real physically-configured
+  // robot, a synthetic stand-in fills their place instead (positional: robotConfigs[i] <->
+  // CORE_PROFILES[i] — see DataTable.tsx and DecisionTree.tsx, which both fold newRobotsDataset in
+  // alongside real robots for this step). Real robots in those slots are handled by the effect
+  // above (not gated the same way — they're already complete by the time this step is reached).
+  // Each slot only ever writes once — the "already there?" check makes re-running this on every
+  // render a no-op once done. Gated on newRobotsArmed (set by StepIntroModal once the step-5 intro
+  // is dismissed) so the new rows appear — and fly in — right after the student sees that modal,
+  // instead of silently existing before they ever read it.
   useEffect(() => {
     if (stepIndex !== 5 || !newRobotsArmed) {
       return;
     }
-    const lockedCriteria = { light_working: true, ir_working: true, motor_noise: true, battery_level: true } as const;
-    let physicalUpdates: Record<string, RobotEntry> | null = null;
     const newEntries: ExternalRobotEntry[] = [];
     // Shuffled once per run so the two synthetic robots (if both needed) get distinct names.
     const nicknamePool = [...NEW_ROBOT_NICKNAMES].sort(() => Math.random() - 0.5);
     [MIN_ROBOTS, MIN_ROBOTS + 1].forEach(profileIndex => {
       const profile = CORE_PROFILES[profileIndex];
-      if (!profile) {
-        return;
-      }
-      const real = robotConfigs[profileIndex];
-      if (real) {
-        if (!physicalRobotData[real.uuid]?.observation) {
-          physicalUpdates = physicalUpdates ?? { ...physicalRobotData };
-          physicalUpdates[real.uuid] = {
-            ...EMPTY_ROBOT_ENTRY,
-            testResults: { ...profile.config },
-            lockedCriteria,
-            tested: true,
-            observation: { category: profile.expectedCategory, notes: '' },
-          };
-        }
+      if (!profile || robotConfigs[profileIndex]) {
         return;
       }
       const id = `new-robot-${profileIndex + 1}`;
@@ -280,26 +309,28 @@ export function SoftwareMain() {
         id,
         label: nicknamePool[newEntries.length] ?? `${profileIndex - MIN_ROBOTS + 1}`,
         testResults: { ...profile.config },
-        lockedCriteria,
         tested: true,
         observation: { category: profile.expectedCategory, notes: '' },
       });
     });
-    if (physicalUpdates) {
-      setPhysicalRobotData(physicalUpdates);
-    }
     if (newEntries.length > 0) {
       setNewRobotsDataset([...newRobotsDataset, ...newEntries]);
     }
-  }, [
-    stepIndex,
-    newRobotsArmed,
-    robotConfigs,
-    physicalRobotData,
-    newRobotsDataset,
-    setPhysicalRobotData,
-    setNewRobotsDataset,
-  ]);
+  }, [stepIndex, newRobotsArmed, robotConfigs, newRobotsDataset, setNewRobotsDataset]);
+
+  // Step 8 only: whether the student's own algorithm tree currently classifies this robot as
+  // needing repair — mirrors DataTable's live "Prédiction" column (classifyWithAlgoTree over the
+  // robot's recorded testResults). Pushed to the robot as `to_repair` so the firmware itself
+  // refuses to launch a run and beeps the failure sound instead — the AI decides who goes out,
+  // same as it will later decide in the data table. At any other step (no algorithm tree yet)
+  // this is always 0, so it never affects step 3's raw terrain gathering.
+  const computeToRepair = useCallback((uuid: string): 0 | 1 => {
+    if (!algorithmModeRef.current || !algorithmTreeRef.current) {
+      return 0;
+    }
+    const testResults = physicalRobotDataRef.current[uuid]?.testResults ?? {};
+    return classifyWithAlgoTree(algorithmTreeRef.current, testResults) === 'repair' ? 1 : 0;
+  }, []);
 
   // Field-test steps (3 & 8): put every ready robot in field mode (enables the center-button
   // line-follow test) on entry, and take them back out of it again on exit.
@@ -315,11 +346,32 @@ export function SoftwareMain() {
       if (statusesRef.current[uuid] !== 'ready') {
         return;
       }
+      if (isFieldTest) {
+        user.setVariables(uuid, new Map([['to_repair', [computeToRepair(uuid)]]]));
+      }
       user.emitEvent(uuid, event).catch((err: unknown) => {
         console.warn(`[SoftwareMain] ${event} failed for ${uuid}:`, err);
       });
     });
-  }, [stepDef.features.fieldTest, user]);
+  }, [stepDef.features.fieldTest, user, computeToRepair]);
+
+  // Re-sync `to_repair` whenever the algorithm tree itself changes while step 8's field test is
+  // active. The push above only fires once, on the edge where field testing *starts* — it can't
+  // by itself cover a robot that was already sitting in the field before the tree had a value to
+  // give it (e.g. right after a page reload, DecisionTree.tsx's AlgorithmCanvas needs a render or
+  // two to restore its persisted tree into context). This effect catches that once algorithmTree
+  // stabilizes, and is a no-op resend on every other legitimate tree update.
+  useEffect(() => {
+    if (!stepDef.features.fieldTest || !stepDef.features.algorithmMode) {
+      return;
+    }
+    robotConfigsRef.current.forEach(({ uuid }) => {
+      if (statusesRef.current[uuid] !== 'ready') {
+        return;
+      }
+      user.setVariables(uuid, new Map([['to_repair', [computeToRepair(uuid)]]]));
+    });
+  }, [algorithmTree, stepDef.features.fieldTest, stepDef.features.algorithmMode, user, computeToRepair]);
 
   // Records robot data with a small flying-dot animation from the tree to the corresponding
   // data-table cell (identified by its data-cell="<uuid>-<cellSuffix>" attribute), landing before
@@ -397,19 +449,15 @@ export function SoftwareMain() {
       // directly.
       const entry = physicalRobotDataRef.current[uuid] ?? EMPTY_ROBOT_ENTRY;
       const priorManualValue = entry.testResults[criterion];
-      // A prior, still-unlocked value came from the student's own manual entry (step 1) — if
-      // the tree's real test measures something else, that's not noise, it's the whole point:
-      // flag it so the DataTable can mark the cell instead of silently overwriting it.
-      if (!entry.lockedCriteria[criterion] && priorManualValue !== undefined && priorManualValue !== value) {
+      // A prior value came from the student's own manual entry (step 1) — if the tree's real
+      // test measures something else, that's not noise, it's the whole point: flag it so the
+      // DataTable can mark the cell instead of silently overwriting it.
+      if (priorManualValue !== undefined && priorManualValue !== value) {
         setCorrectedCriteria({ ...correctedCriteriaRef.current, [`${uuid}-${criterion}`]: priorManualValue });
       }
       setPhysicalRobotData({
         ...physicalRobotDataRef.current,
-        [uuid]: {
-          ...entry,
-          testResults: { ...entry.testResults, [criterion]: value },
-          lockedCriteria: { ...entry.lockedCriteria, [criterion]: true },
-        },
+        [uuid]: { ...entry, testResults: { ...entry.testResults, [criterion]: value } },
       });
     },
     [setPhysicalRobotData, setCorrectedCriteria]
@@ -505,7 +553,10 @@ export function SoftwareMain() {
           const isField = robotTeamsRef.current[uuid] === 'terrain';
           const profileIndex = robotConfigsRef.current.findIndex(r => r.uuid === uuid);
           const cfg = CORE_PROFILES[profileIndex]?.config;
-          const initVars = new Map<string, number[]>([['field_mode', [isField ? 1 : 0]]]);
+          const initVars = new Map<string, number[]>([
+            ['field_mode', [isField ? 1 : 0]],
+            ['to_repair', [computeToRepair(uuid)]],
+          ]);
           if (cfg) {
             initVars.set('light_working', [cfg.light_working]);
             initVars.set('ir_working', [cfg.ir_working]);
@@ -531,7 +582,7 @@ export function SoftwareMain() {
           console.warn('[SoftwareMain] initializeRobot failed (will retry):', err);
         });
     },
-    [initializeRobot, user, handleSeqDone]
+    [initializeRobot, user, handleSeqDone, computeToRepair]
   );
 
   // Poll TDM every 2 s; auto-connect any robot that becomes 'available'.
@@ -830,7 +881,7 @@ export function SoftwareMain() {
                 step7DemoActive ? (
                   <DecisionTree key="algorithm-demo" mode="algorithm" previewMode />
                 ) : (
-                  <DecisionTree key="algorithm-real" mode="algorithm" />
+                  <DecisionTree key="algorithm-real" mode="algorithm" frozen={stepDef.features.fieldTest} />
                 )
               ) : !showTree && !showManual ? (
                 <div className="w-full h-full flex items-center justify-center">

@@ -4,7 +4,7 @@ import { thymioManagerFactory } from '../../Entities/ThymioManager';
 import { tdmConnectionEvents } from '../../Entities/ThymioManager/tdmConnectionEvents';
 import type { Users } from '../../Entities/ThymioManager/Model/users.model';
 import { useLocalStorage } from '../../helpers/useLocalStorage';
-import { clearSavedTree } from './components/DecisionTree';
+import { clearSavedTree, clearSavedAlgoTree } from './components/DecisionTree';
 import { getActiveRobotConfigs } from './robotProfiles';
 import {
   getStepDef,
@@ -141,10 +141,6 @@ type ScenarioState = {
    * intro. */
   algorithmBuildArmed: boolean;
   setAlgorithmBuildArmed: (armed: boolean) => void;
-  /** True while DataTable's EditRobotModal is open — the guided tour waits for it to close before
-   * showing the next popover, so it never renders behind that modal. */
-  editRobotModalOpen: boolean;
-  setEditRobotModalOpen: (open: boolean) => void;
   /** True while any DecisionNode's question dropdown is open. Step 6's TreeDifficultyModal waits
    * for it to close before popping up, so the "give up?" modal never opens on top of an open
    * dropdown (which would otherwise render behind the modal backdrop, half-hidden). */
@@ -208,7 +204,6 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     'scenario:algorithmBuildArmed',
     false
   );
-  const [editRobotModalOpen, setEditRobotModalOpen] = useState(false);
   const [questionDropdownOpen, setQuestionDropdownOpen] = useState(false);
   const [robotTestActive, setRobotTestActive] = useState(false);
   const [testResultRobot, setTestResultRobot] = useState<string | null>(null);
@@ -332,6 +327,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
 
   const resetApp = useCallback(() => {
     clearSavedTree();
+    clearSavedAlgoTree();
     // The `user` connection is a page-lifetime singleton, never itself torn down by an in-app
     // reset — without releasing each robot's lock here, TDM keeps reporting it as busy forever,
     // so the next SoftwareMain mount's poll loop never sees it as 'available' again and never
@@ -371,7 +367,6 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setGiveUpAvailable(false);
     setStep7DemoActive(false);
     setAlgorithmBuildArmed(false);
-    setEditRobotModalOpen(false);
   }, [
     robotConfigs,
     setStepIndex,
@@ -451,8 +446,6 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setStep7DemoActive,
       algorithmBuildArmed,
       setAlgorithmBuildArmed,
-      editRobotModalOpen,
-      setEditRobotModalOpen,
       questionDropdownOpen,
       setQuestionDropdownOpen,
       robotTestActive,
@@ -515,8 +508,6 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setStep7DemoActive,
       algorithmBuildArmed,
       setAlgorithmBuildArmed,
-      editRobotModalOpen,
-      setEditRobotModalOpen,
       questionDropdownOpen,
       setQuestionDropdownOpen,
       robotTestActive,

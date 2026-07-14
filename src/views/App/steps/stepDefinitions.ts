@@ -9,8 +9,6 @@ export const ALL_CRITERIA: Criterion[] = ['light_working', 'ir_working', 'motor_
 
 export type RobotEntry = {
   testResults: Partial<Record<Criterion, number>>;
-  /** Criteria whose value was obtained via a physical tree test — locked from manual editing. */
-  lockedCriteria: Partial<Record<Criterion, true>>;
   /** True once the robot has been run through the decision tree down to a leaf. */
   tested: boolean;
   observation: { category: 'ready' | 'repair'; notes: string } | null;
@@ -27,7 +25,6 @@ export type RobotEntry = {
 
 export const EMPTY_ROBOT_ENTRY: RobotEntry = {
   testResults: {},
-  lockedCriteria: {},
   tested: false,
   observation: null,
   prediction: null,
@@ -109,7 +106,6 @@ function buildEntries(
     id,
     label,
     testResults: { ...cfg },
-    lockedCriteria: {},
     tested: true,
     observation: externalObservation(cfg),
   }));
@@ -327,7 +323,7 @@ export type StepFeatures = {
   treeDeletable: boolean;
   /** Data table of collected robot test results is shown. */
   dataTable: boolean;
-  /** Data table rows can be opened and edited (vs. read-only). */
+  /** Data table cells (test-result values) can be edited (vs. read-only). */
   dataEditable: boolean;
   /** Terrain observation entry form is shown. */
   observationEntry: boolean;
@@ -405,9 +401,9 @@ export const STEP_DEFS: StepDef[] = [
     index: 2,
     label: 'Prédiction du labo',
     shortLabel: 'Prédiction',
-    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true, dataEditable: true },
-    // Completeness (all criteria filled) is already guaranteed by step 1's own gate — this step
-    // only adds "actually run through the tree" on top of that.
+    features: { ...NO_FEATURES, manualOp: true, treeVisible: true, dataTable: true },
+    // Completeness (all criteria filled) is already guaranteed by step 1's own gate, so the table
+    // is read-only here — this step only adds "actually run through the tree" on top of that.
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
       robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.tested === true),
     objective: 'Voir comment un programme décide — et le comparer à ton pronostic.',
@@ -467,7 +463,7 @@ export const STEP_DEFS: StepDef[] = [
     intro: {
       heading: 'De nouveaux robots arrivent',
       body: [
-        "Deux nouveaux robots rejoignent l'équipe. Pas besoin de les observer un par un : leurs données de labo et de terrain sont déjà là, dans le tableau.",
+        "Deux nouveaux robots rejoignent l'équipe. D'autres scientifiques ont déjà rentré leurs données dans le tableau.",
         "Ta seule question : est-ce que ton arbre — celui que tu viens d'affiner — les classe correctement du premier coup ? Sinon, ajuste-le encore.",
       ],
     },

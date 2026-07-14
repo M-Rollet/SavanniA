@@ -767,17 +767,28 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
       const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
       addPlacement(entry, r.uuid, colorDef?.hex ?? '#a1a1a1', colorDef?.label ?? r.color, true);
     }
-    // Stand-ins for the 5th/6th core robots (see ScenarioContext's newRobotsDataset) — unlike
-    // externalDataset below, these DO count toward stats: the "De nouveaux robots" step's
-    // canAdvance needs them to, whether or not that robot slot has real hardware behind it.
+    // Stand-ins for the 5th/6th core robots (see ScenarioContext's newRobotsDataset) — these
+    // DO count toward stats: the "De nouveaux robots" step's canAdvance needs them to, whether
+    // or not that robot slot has real hardware behind it.
     for (const e of newRobotsDataset) {
       addPlacement(e, e.id, '#94a3b8', e.label, true);
     }
+    // externalDataset only counts toward stats on the "Données externes" step itself — on later
+    // steps (algorithm mode) it's along for the ride but shouldn't gate canAdvance.
     for (const e of externalDataset) {
-      addPlacement(e, e.id, '#94a3b8', e.label, false);
+      addPlacement(e, e.id, '#94a3b8', e.label, stepFeatures.externalData);
     }
     return { leafPlacements: map, classificationStats: stats };
-  }, [robotPlacement, robotConfigs, physicalRobotData, newRobotsDataset, externalDataset, nodes, edges]);
+  }, [
+    robotPlacement,
+    robotConfigs,
+    physicalRobotData,
+    newRobotsDataset,
+    externalDataset,
+    nodes,
+    edges,
+    stepFeatures.externalData,
+  ]);
 
   useEffect(() => {
     if (robotPlacement) {
@@ -1101,15 +1112,67 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
 });
 
 // ════════════════════════════════════════════════════════════════════════
+// Algorithm mode persistence (step 7 build + step 8 frozen final test)
+// ════════════════════════════════════════════════════════════════════════
+
+// Bump whenever the auto-build's node/edge shape changes incompatibly — same reasoning as
+// TREE_VERSION above.
+const ALGO_TREE_VERSION = 1;
+const ALGO_STORAGE_KEY = `savannia-algo-tree-v${ALGO_TREE_VERSION}`;
+
+export function clearSavedAlgoTree() {
+  localStorage.removeItem(ALGO_STORAGE_KEY);
+}
+
+// Without this, every remount of the real (non-preview) canvas — a page reload while sitting at
+// step 8 being the main case — found an empty tree and replayed the whole animated auto-build
+// from scratch (see the seed effect below), which also left `algorithmTree` in context transiently
+// null/pending right when SoftwareMain needs a stable classification to gate the physical run
+// (`to_repair`). Returns null (not a fallback tree) when nothing's saved — algorithm mode has no
+// equivalent of manual mode's pre-built INITIAL_TREE, it always starts from an empty root.
+function loadAlgoTree(): { nodes: Node[]; edges: Edge[] } | null {
+  try {
+    const raw = localStorage.getItem(ALGO_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { nodes: Node[]; edges: Edge[] };
+      if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges) && parsed.nodes.some(n => n.id === 'root')) {
+        return { nodes: layoutTree(parsed.nodes, parsed.edges), edges: parsed.edges };
+      }
+    }
+  } catch {
+    // ignore parse/quota errors
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // Algorithm tree canvas — step 7: the tree is built via the guided
 // question → auto-categorize → validate flow, ending in an automatic build.
 // ════════════════════════════════════════════════════════════════════════
 
-function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEntry[]; previewMode?: boolean }) {
+function AlgorithmCanvas({
+  dataset,
+  previewMode = false,
+  frozen = false,
+}: {
+  dataset: DatasetEntry[];
+  previewMode?: boolean;
+  /** Step 8 only: once true, the tree is never auto-rebuilt again — not on remount (page reload)
+   * and not when the dataset changes (e.g. a new robot connecting) — since the whole point of the
+   * final test is to run the exact tree that was validated at the end of step 7. Classifying a
+   * newly-arrived robot still works fine against a frozen tree; it just doesn't trigger a rebuild. */
+  frozen?: boolean;
+}) {
   const { setAlgorithmTree, algorithmBuildArmed } = useScenario();
 
-  const [nodes, setNodes] = useState<Node[]>(() => [{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  // previewMode (Step7IntroModal's throwaway demo) never touches storage — see the demo/real
+  // split at SoftwareMain's algorithmMode branch.
+  const [nodes, setNodes] = useState<Node[]>(
+    () =>
+      (!previewMode && loadAlgoTree()?.nodes) || [{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]
+  );
+  const [edges, setEdges] = useState<Edge[]>(() => (!previewMode && loadAlgoTree()?.edges) || []);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoBuildQueue, setAutoBuildQueue] = useState<string[]>([]);
   const [viewingRobot, setViewingRobot] = useState<ViewingRobot | null>(null);
 
@@ -1135,14 +1198,17 @@ function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEnt
   // for both the real step-7 canvas and Step7IntroModal's previewMode demo alike. Gated on
   // algorithmBuildArmed (set once Step7IntroModal's "Construire" is pressed) so the real canvas —
   // mounted behind that modal the whole time it's open — never starts building itself silently in
-  // the background while the student is still reading through the intro.
+  // the background while the student is still reading through the intro. Also gated on `frozen`
+  // (step 8): loadAlgoTree() should already have restored a complete tree by the time this step is
+  // reachable, but this is the defensive backstop against ever silently re-triggering a build
+  // there (e.g. cleared storage) instead of just showing whatever's there.
   useEffect(() => {
-    if (edges.length > 0 || !algorithmBuildArmed) {
+    if (frozen || edges.length > 0 || !algorithmBuildArmed) {
       return;
     }
     const id = addFirstChild();
     setAutoBuildQueue([id]);
-  }, [edges.length, addFirstChild, algorithmBuildArmed]);
+  }, [edges.length, addFirstChild, algorithmBuildArmed, frozen]);
 
   const onPlacementClick = useCallback(
     (uuid: string) => {
@@ -1155,7 +1221,6 @@ function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEnt
         label: entry.label,
         entryOverride: {
           testResults: entry.testResults,
-          lockedCriteria: {},
           tested: true,
           observation: { category: entry.category, notes: '' },
         },
@@ -1170,13 +1235,19 @@ function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEnt
     .join(',');
   const initializedKeyRef = useRef(datasetKey);
   useEffect(() => {
-    if (datasetKey !== initializedKeyRef.current) {
-      initializedKeyRef.current = datasetKey;
-      setNodes([{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
-      setEdges([]);
-      setAutoBuildQueue([]);
+    // Frozen (step 8): a robot connecting mid-final-test changes the dataset's id set, but the
+    // tree that was validated at the end of step 7 must keep running unchanged — it still
+    // classifies that robot fine, it just doesn't get rebuilt around it. `initializedKeyRef` is
+    // deliberately left stale here, so if the student later steps back to an unfrozen step, the
+    // mismatch is still there and a normal rebuild resumes.
+    if (frozen || datasetKey === initializedKeyRef.current) {
+      return;
     }
-  }, [datasetKey]);
+    initializedKeyRef.current = datasetKey;
+    setNodes([{ id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} }]);
+    setEdges([]);
+    setAutoBuildQueue([]);
+  }, [datasetKey, frozen]);
 
   // Now that the real (non-preview) canvas no longer pre-builds itself in the background while
   // Step7IntroModal is still open (see algorithmBuildArmed above), it's the previewMode demo —
@@ -1186,6 +1257,32 @@ function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEnt
     const rootEdge = edges.find(e => e.source === 'root' && e.sourceHandle === 'out');
     setAlgorithmTree(rootEdge ? toAlgoTree(rootEdge.target, nodes, edges) : { type: 'pending' });
   }, [nodes, edges, setAlgorithmTree]);
+
+  // ── Persist tree to localStorage (debounced, no positions) — same pattern as the manual tree
+  // above; see loadAlgoTree() for why this exists. Skipped for previewMode, which never loads from
+  // storage either. ──
+  useEffect(() => {
+    if (previewMode) {
+      return;
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      try {
+        localStorage.setItem(
+          ALGO_STORAGE_KEY,
+          JSON.stringify({
+            nodes: nodes.map(({ id, type, data }) => ({ id, type, position: { x: 0, y: 0 }, data })),
+            edges: edges.map(({ id, source, sourceHandle, target }) => ({ id, source, sourceHandle, target })),
+          })
+        );
+      } catch {
+        // ignore quota errors
+      }
+    }, 500);
+  }, [nodes, edges, previewMode]);
 
   // ── Core mutation: assign a question to a decision node, always auto-categorizing both
   //    branches with opposite categories (whichever pairing minimizes total error). ──
@@ -1510,7 +1607,13 @@ function AlgorithmCanvas({ dataset, previewMode = false }: { dataset: DatasetEnt
   );
 }
 
-function AlgorithmTreeCanvas({ previewMode = false }: { previewMode?: boolean }) {
+function AlgorithmTreeCanvas({
+  previewMode = false,
+  frozen = false,
+}: {
+  previewMode?: boolean;
+  frozen?: boolean;
+}) {
   const { robotConfigs, physicalRobotData, newRobotsDataset, externalDataset } = useScenario();
 
   const dataset: DatasetEntry[] = [
@@ -1552,7 +1655,7 @@ function AlgorithmTreeCanvas({ previewMode = false }: { previewMode?: boolean })
     );
   }
 
-  return <AlgorithmCanvas dataset={dataset} previewMode={previewMode} />;
+  return <AlgorithmCanvas dataset={dataset} previewMode={previewMode} frozen={frozen} />;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -1566,16 +1669,18 @@ export type DecisionTreeProps = {
   /** 'algorithm' mode only: skips the interactive 2-level manual phase and auto-builds the whole
    * tree hands-off, using the real dataset — Step7IntroModal's live preview of the algorithm. */
   previewMode?: boolean;
+  /** 'algorithm' mode only: step 8 — freezes the built tree (see AlgorithmCanvas's `frozen`). */
+  frozen?: boolean;
 } & Partial<ManualTreeProps>;
 
 export const DecisionTree = forwardRef<DecisionTreeHandle, DecisionTreeProps>(function DecisionTree(
-  { mode = 'manual', previewMode, ...manualProps },
+  { mode = 'manual', previewMode, frozen, ...manualProps },
   ref
 ) {
   return (
     <ReactFlowProvider key={mode}>
       {mode === 'algorithm' ? (
-        <AlgorithmTreeCanvas previewMode={previewMode} />
+        <AlgorithmTreeCanvas previewMode={previewMode} frozen={frozen} />
       ) : (
         <ManualTreeCanvas ref={ref} testing={false} {...manualProps} />
       )}

@@ -105,6 +105,7 @@ var previous_black_state
 # zero vars: no "= 0" initializers — the VM zeroes memory at load (saves init bytecode)
 var field_mode
 var field_step
+var to_repair  # 1 = app's algorithm classified this robot "à réparer": refuse to launch, beep_fail instead
 var seq_step
 var seq_type
 var motor_noise
@@ -193,7 +194,11 @@ onevent button.center
         if button.center != 0 then
             call leds.buttons(32, 32, 32, 32)
             if field_step == 0 then
-                field_step = 1
+                if to_repair == 1 then
+                    callsub beep_fail
+                else
+                    field_step = 1
+                end
             else
                 field_step = 0
                 callsub stop_motors

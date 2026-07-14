@@ -102,18 +102,8 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
     advanceOn: 'ok',
   },
   5: {
-    target: '[data-tour="selected-robot-row"]',
-    text: 'Clique sur la ligne de ton robot pour ouvrir sa fiche.',
-    advanceOn: 'wait',
-  },
-  6: {
-    target: '[data-tour="edit-modal"]',
-    text: "Indique si la lumière fonctionne, d'après ce que tu as observé.",
-    advanceOn: 'wait',
-  },
-  7: {
-    target: '[data-tour="terminate-button"]',
-    text: 'Clique sur Terminé pour valider.',
+    target: '[data-tour="selected-robot-light-cell"]',
+    text: "Clique sur la case Lumière de ton robot, et indique si elle fonctionne, d'après ce que tu as observé.",
     advanceOn: 'wait',
   },
   8: {
@@ -144,7 +134,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   21: {
     target: '[data-testid="rf__node-d1"]',
-    text: 'Chaque question du programme ressemble à ceci : une seule question, et deux réponses possibles — Oui ou Non.',
+    text: "Chaque question du programme ressemble à ceci : une seule question, et deux réponses possibles — Oui ou Non. C'est un noeud !",
     advanceOn: 'ok',
     chevronNav: true,
     back: 20,
@@ -162,9 +152,10 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
     // real leaf card auto-sizes to its content and can render taller, spilling past that
     // estimate — highlighting the wrapper alone clips the bottom of the card off.
     target: '[data-testid="rf__node-l1"] .node-card',
+    placement: 'top',
     text: (
       <>
-        Ici, plus de question : c'est une décision finale. Le robot est classé <StatusLabel ready />.
+        Ici, plus de question : c'est une décision finale. Le robot est classé <StatusLabel ready />. C'est une feuille de l'arbre.
       </>
     ),
     advanceOn: 'ok',
@@ -181,6 +172,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   25: {
     // Same wrapper-vs-card sizing note as step 23 above.
     target: '[data-testid="rf__node-l2"] .node-card',
+    placement: 'top',
     text: (
       <>
         Dans ce cas, le robot est classé <StatusLabel ready={false} />. Quel que soit le chemin, l'arbre se termine
@@ -353,7 +345,6 @@ export function TourOverlay() {
     controledRobot,
     robotConfigs,
     physicalRobotData,
-    editRobotModalOpen,
     robotTestActive,
     testResultRobot,
   } = useScenario();
@@ -385,18 +376,16 @@ export function TourOverlay() {
   }, [tourStep, controledRobot, setTourStep]);
 
   // Waiting-for-row-completion → step 8: any robot (not necessarily the one originally selected)
-  // reaching a full row satisfies the mid-objective — but only once its edit modal has actually
-  // been closed, so the spotlight never has to render behind it.
+  // reaching a full row satisfies the mid-objective.
   useEffect(() => {
     if (
       tourStep === TOUR_WAIT_ROW_COMPLETE &&
-      !editRobotModalOpen &&
       robotConfigs.some(({ uuid }) => hasAllCriteria(physicalRobotData[uuid]))
     ) {
       const timer = setTimeout(() => setTourStep(8), TOUR_ADVANCE_DELAY_MS);
       return () => clearTimeout(timer);
     }
-  }, [tourStep, editRobotModalOpen, robotConfigs, physicalRobotData, setTourStep]);
+  }, [tourStep, robotConfigs, physicalRobotData, setTourStep]);
 
   // Step-2 tour, step 26 → 27: advances once the selected robot's test actually reaches a leaf.
   // Deliberately keyed on testResultRobot (set fresh on every completed run), not
@@ -559,7 +548,7 @@ export function TourOverlay() {
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_1}
-        text="Bien joué ! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant à nouveau sur sa ligne dans le tableau."
+        text="Bien joué ! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant sur les autres cases de sa ligne dans le tableau."
         onDismiss={() => setTourStep(TOUR_WAIT_ROW_COMPLETE)}
       />
 

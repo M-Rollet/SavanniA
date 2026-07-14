@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { Dropdown, Tooltip } from '@heroui/react';
 import { CheckShape, Ban } from '@gravity-ui/icons';
 import { ROBOT_COLORS, useScenario } from '../ScenarioContext';
 import {
@@ -11,8 +12,14 @@ import {
   type RobotEntry,
 } from '../steps/stepDefinitions';
 import { getWrongCriteria } from '../robotProfiles';
-import { EditRobotModal, BOOL_OPTIONS, NOISE_OPTIONS, BATTERY_OPTIONS } from './EditRobotModal';
-import { TOUR_ADVANCE_DELAY_MS, TOUR_INTERLUDE_2, TOUR4_STEP, isPredictionLockedByTour } from './TourOverlay';
+import { BOOL_OPTIONS, NOISE_OPTIONS, BATTERY_OPTIONS } from './EditRobotModal';
+import {
+  TOUR_ADVANCE_DELAY_MS,
+  TOUR_INTERLUDE_1,
+  TOUR_INTERLUDE_2,
+  TOUR4_STEP,
+  isPredictionLockedByTour,
+} from './TourOverlay';
 import './TreeNodes.css';
 
 // New-row fly-in animation (external dataset / new robots) — stagger delay per row and each row's
@@ -97,15 +104,8 @@ export function DataTable() {
     testResultRobot,
     tourStep,
     setTourStep,
-    setEditRobotModalOpen,
   } = useScenario();
-  const [editingUuid, setEditingUuid] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // The guided tour waits for this modal to close before showing its next popover.
-  useEffect(() => {
-    setEditRobotModalOpen(editingUuid !== null);
-  }, [editingUuid, setEditRobotModalOpen]);
 
   // Keeps the newly-arrived rows (external dataset / new robots) in view while they fly in.
   // Rather than an instant/native smooth-scroll (which reaches the bottom well before the later,
@@ -183,8 +183,6 @@ export function DataTable() {
     })),
   ];
 
-  const editingLabel = rows.find(r => r.uuid === editingUuid)?.label ?? '';
-
   // The tour's mid-objective is "any one robot with a full row" — not necessarily the one
   // originally selected — so step 8 targets whichever robot actually got there first.
   const tourTargetUuid = robotConfigs.find(r => hasAllCriteria(physicalRobotData[r.uuid]))?.uuid;
@@ -194,6 +192,20 @@ export function DataTable() {
     setPhysicalRobotData({ ...physicalRobotData, [uuid]: { ...entry, prediction } });
     if (tourStep === 8 && uuid === tourTargetUuid) {
       setTimeout(() => setTourStep(TOUR_INTERLUDE_2), TOUR_ADVANCE_DELAY_MS);
+    }
+  };
+
+  const setCellValue = (uuid: string, criterion: Criterion, value: number) => {
+    const entry = physicalRobotData[uuid] ?? EMPTY_ROBOT_ENTRY;
+    if (!stepDef.features.dataEditable) {
+      return;
+    }
+    setPhysicalRobotData({
+      ...physicalRobotData,
+      [uuid]: { ...entry, testResults: { ...entry.testResults, [criterion]: value } },
+    });
+    if (tourStep === 5 && criterion === 'light_working' && uuid === controledRobot) {
+      setTimeout(() => setTourStep(TOUR_INTERLUDE_1), TOUR_ADVANCE_DELAY_MS);
     }
   };
 
@@ -257,9 +269,8 @@ export function DataTable() {
                 ? 'tree-result-row'
                 : tourStep === TOUR4_STEP && mismatch
                 ? 'mismatched-row'
-                : row.uuid && row.uuid === controledRobot
-                ? 'selected-robot-row'
                 : undefined;
+            const notes = row.entry?.observation?.notes;
             return (
               <motion.tr
                 key={row.key}
@@ -267,36 +278,58 @@ export function DataTable() {
                 initial={row.isExternal ? { opacity: 0, x: 24 } : false}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: ROW_DURATION_S, delay: (row.arrivalIndex ?? 0) * ROW_STAGGER_S }}
-                onClick={() => {
-                  if (!row.uuid) {
-                    return;
-                  }
-                  setEditingUuid(row.uuid);
-                  if (tourStep === 5 && row.uuid === controledRobot) {
-                    setTourStep(6);
-                  }
-                }}
-                className={`hover:bg-gray-50/60 transition-colors ${row.uuid ? 'cursor-pointer' : ''}`}
+                className="hover:bg-gray-50/60 transition-colors"
               >
                 <td className="px-3 py-2 border border-gray-100">
-                  <span className="flex items-center gap-2">
-                    {row.color ? (
-                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
-                    ) : (
-                      <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
-                    )}
-                    {row.label}
-                  </span>
+                  {notes ? (
+                    <Tooltip delay={200}>
+                      <Tooltip.Trigger className="flex items-center gap-2">
+                        {row.color ? (
+                          <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                        ) : (
+                          <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
+                        )}
+                        {row.label}
+                      </Tooltip.Trigger>
+                      <Tooltip.Content>Notes du terrain : {notes}</Tooltip.Content>
+                    </Tooltip>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      {row.color ? (
+                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                      ) : (
+                        <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
+                      )}
+                      {row.label}
+                    </span>
+                  )}
                 </td>
                 {CRITERIA.map(c => {
                   const value = row.entry?.testResults[c];
                   const isWrong = !!row.uuid && wrongCells?.has(`${row.uuid}-${c}`);
                   const priorManualValue = row.uuid ? correctedCriteria[`${row.uuid}-${c}`] : undefined;
                   const isCorrected = priorManualValue !== undefined;
+                  const editable = !!row.uuid && stepDef.features.dataEditable;
+                  const cellTourAttr =
+                    tourStep === 5 && c === 'light_working' && row.uuid === controledRobot
+                      ? 'selected-robot-light-cell'
+                      : undefined;
+                  const valueDisplay = (
+                    <motion.span
+                      key={value ?? 'empty'}
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3 }}
+                      className="inline-block"
+                    >
+                      {formatValue(c, value)}
+                    </motion.span>
+                  );
                   return (
                     <td
                       key={c}
                       data-cell={row.uuid ? `${row.uuid}-${c}` : undefined}
+                      data-tour={cellTourAttr}
                       title={
                         isCorrected
                           ? `Tu avais noté « ${formatValue(c, priorManualValue)} », le test mesure « ${formatValue(
@@ -305,7 +338,7 @@ export function DataTable() {
                             )} ».`
                           : undefined
                       }
-                      className={`relative px-2 py-2 text-gray-600 overflow-hidden ${
+                      className={`relative text-gray-600 overflow-hidden ${editable ? 'p-0' : 'px-2 py-2'} ${
                         isWrong
                           ? 'bg-yellow-100 border-2 border-yellow-300'
                           : isCorrected
@@ -316,15 +349,24 @@ export function DataTable() {
                       {isCorrected && (
                         <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
                       )}
-                      <motion.span
-                        key={value ?? 'empty'}
-                        initial={{ opacity: 0, scale: 0.5 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.3 }}
-                        className="inline-block"
-                      >
-                        {formatValue(c, value)}
-                      </motion.span>
+                      {editable ? (
+                        <Dropdown>
+                          <Dropdown.Trigger className="absolute inset-0 flex items-center w-full h-full px-2 py-2 text-left border-0 bg-transparent shadow-none ring-0 outline-none cursor-pointer hover:bg-blue-50 transition-colors">
+                            {valueDisplay}
+                          </Dropdown.Trigger>
+                          <Dropdown.Popover>
+                            <Dropdown.Menu onAction={key => setCellValue(row.uuid!, c, Number(key))}>
+                              {CRITERIA_OPTIONS[c].map(o => (
+                                <Dropdown.Item key={o.value} id={String(o.value)}>
+                                  {o.label}
+                                </Dropdown.Item>
+                              ))}
+                            </Dropdown.Menu>
+                          </Dropdown.Popover>
+                        </Dropdown>
+                      ) : (
+                        valueDisplay
+                      )}
                     </td>
                   );
                 })}
@@ -401,8 +443,6 @@ export function DataTable() {
           })}
         </tbody>
       </table>
-
-      <EditRobotModal uuid={editingUuid} label={editingLabel} onClose={() => setEditingUuid(null)} />
     </div>
   );
 }
