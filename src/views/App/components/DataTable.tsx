@@ -27,7 +27,7 @@ import './TreeNodes.css';
 export const ROW_STAGGER_S = 0.05;
 export const ROW_DURATION_S = 0.15;
 
-const CRITERIA: Criterion[] = ['light_working', 'ir_working', 'motor_noise', 'battery_level'];
+const CRITERIA: Criterion[] = ['light_working', 'motor_noise', 'battery_level', 'ir_working'];
 
 const CRITERIA_LABELS: Record<Criterion, string[]> = {
   light_working: ['Lumière'],
