@@ -116,7 +116,7 @@ export function TerrainModal() {
     <Modal state={state}>
       <Modal.Backdrop isDismissable={false} isKeyboardDismissDisabled>
         <Modal.Container size="cover">
-          <Modal.Dialog>
+          <Modal.Dialog className="max-w-[1280px]">
             <Modal.Header>
               <Modal.Heading>Tests sur le terrain</Modal.Heading>
             </Modal.Header>
