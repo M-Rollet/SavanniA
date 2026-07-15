@@ -38,7 +38,7 @@ interface Props {
 }
 
 export function TeamModal({ isOpen, onClose }: Props) {
-  const { robotConfigs, robotTeams, setRobotTeams } = useScenario();
+  const { activeRobotConfigs, robotTeams, setRobotTeams } = useScenario();
 
   const [localTeams, setLocalTeams] = useState<Record<string, RobotTeam>>({});
   const [draggingUuid, setDraggingUuid] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export function TeamModal({ isOpen, onClose }: Props) {
       return;
     }
     const init: Record<string, RobotTeam> = {};
-    for (const r of robotConfigs) {
+    for (const r of activeRobotConfigs) {
       init[r.uuid] = robotTeams[r.uuid] ?? 'terrain';
     }
     setLocalTeams(init);
@@ -118,13 +118,18 @@ export function TeamModal({ isOpen, onClose }: Props) {
   };
 
   const handleSave = () => {
-    setRobotTeams(localTeams);
+    // Merge (not replace): robots outside activeRobotConfigs (e.g. steps 1-4's capped slots)
+    // keep whatever team they already had — this modal never shows them, so it must never
+    // wipe their assignment.
+    setRobotTeams({ ...robotTeams, ...localTeams });
     onClose();
   };
 
-  const terrainRobots = robotConfigs.filter(r => (localTeams[r.uuid] ?? 'terrain') === 'terrain');
-  const bureauRobots = robotConfigs.filter(r => (localTeams[r.uuid] ?? 'terrain') === 'bureau');
-  const draggingColor = draggingUuid ? colorMeta[robotConfigs.find(r => r.uuid === draggingUuid)?.color ?? ''] : null;
+  const terrainRobots = activeRobotConfigs.filter(r => (localTeams[r.uuid] ?? 'terrain') === 'terrain');
+  const bureauRobots = activeRobotConfigs.filter(r => (localTeams[r.uuid] ?? 'terrain') === 'bureau');
+  const draggingColor = draggingUuid
+    ? colorMeta[activeRobotConfigs.find(r => r.uuid === draggingUuid)?.color ?? '']
+    : null;
 
   const handleDragStart = (uuid: string, x: number, y: number) => {
     setDraggingUuid(uuid);
@@ -147,21 +152,21 @@ export function TeamModal({ isOpen, onClose }: Props) {
           <Modal.Container size="lg">
             <Modal.Dialog>
               <Modal.Header>
-                <Modal.Heading>Répartition des robots</Modal.Heading>
+                <Modal.Heading>Envoi sur le terrain</Modal.Heading>
                 <Modal.CloseTrigger />
               </Modal.Header>
 
               <Modal.Body className="flex flex-col gap-4">
                 <p className="text-sm text-gray-500">
-                  Glisse les robots entre les deux équipes pour modifier la répartition.
+                  Glisse les robots pour les envoyer sur le terrain ou les récupérer au labo.
                 </p>
 
                 <div className="flex flex-col gap-2">
                   {/* Labels row — spacer keeps the label widths aligned with their zones */}
                   <div className="flex gap-3 justify-center items-center">
-                    <p className="w-44 text-sm font-semibold text-center">Équipe de bureau</p>
+                    <p className="w-44 text-sm font-semibold text-center">Laboratoire</p>
                     <span className="w-9 shrink-0" />
-                    <p className="w-44 text-sm font-semibold text-center">Équipe de terrain</p>
+                    <p className="w-44 text-sm font-semibold text-center">Terrain</p>
                   </div>
 
                   {/* Zones + button row — items-center aligns button to zone midpoint */}

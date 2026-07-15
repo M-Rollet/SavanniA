@@ -9,7 +9,7 @@ import { TeamModal } from '../components/TeamModal';
 import { StepIntroModal } from '../components/StepIntroModal';
 import { ReunionModal } from '../components/ReunionModal';
 import { DecisionTreeIntroModal } from '../components/DecisionTreeIntroModal';
-import { TourOverlay, isLaunchTestLockedByTour } from '../components/TourOverlay';
+import { TourOverlay, isLaunchTestLockedByTour, isRobotSelectionLockedByTour } from '../components/TourOverlay';
 import { TerrainModal } from '../components/TerrainModal';
 import { DataCheckModal } from '../components/DataCheckModal';
 import { ExternalDataIntroModal, ExternalDataReadyModal } from '../components/ExternalDataIntroModal';
@@ -540,7 +540,7 @@ export function SoftwareMain() {
         // built-in retry (≈1.2 s total) can lose that race under WiFi congestion, silently
         // leaving a robot stuck out of field mode with nothing to correct it afterwards.
         if (vars.status_field_mode !== undefined && !fieldModeSyncingRef.current.has(uuid)) {
-          const desired = fieldTestRef.current ? 1 : 0;
+          const desired = fieldTestRef.current || robotTeamsRef.current[uuid] === 'terrain' ? 1 : 0;
           if (vars.status_field_mode !== desired) {
             fieldModeSyncingRef.current.add(uuid);
             user
@@ -623,6 +623,18 @@ export function SoftwareMain() {
     setSensorData(SENSOR_DEFAULTS);
   }, [controledRobot]);
 
+  // Same cleanup as above, but for the other way a robot's light gets left on: leaving "Opération
+  // manuelle" for the tree layout without switching robots, so the `controledRobot` effect above
+  // never fires.
+  const prevManualModeRef = useRef(effectiveManualMode);
+  useEffect(() => {
+    const wasManual = prevManualModeRef.current;
+    prevManualModeRef.current = effectiveManualMode;
+    if (wasManual && !effectiveManualMode && controledRobot && sensorDataRef.current.light > 0) {
+      user.emitEvent(controledRobot, 'light_off');
+    }
+  }, [effectiveManualMode, controledRobot, user]);
+
   // Deselect if the selected robot is no longer ready.
   useEffect(() => {
     if (controledRobot && displayState(statuses[controledRobot]) !== 'ready') {
@@ -637,22 +649,13 @@ export function SoftwareMain() {
     }
   }, [controllableRobots, controledRobot, selectRobot]);
 
-  // Propagate team changes to already-initialised robots. Skipped during field-test steps (3 & 8)
-  // — there, every robot must be in field_mode regardless of team, and that's already enforced by
-  // the dedicated fieldTest effect above; letting this one run too would clobber that with stale
-  // team assignments (e.g. leftover 'bureau' from a previous step-4 visit).
-  useEffect(() => {
-    if (stepDef.features.fieldTest) {
-      return;
-    }
-    robotConfigs.forEach(({ uuid }) => {
-      if (statuses[uuid] !== 'ready') {
-        return;
-      }
-      const isField = robotTeams[uuid] === 'terrain';
-      user.setVariables(uuid, new Map([['field_mode', [isField ? 1 : 0]]]));
-    });
-  }, [robotTeams, stepDef.features.fieldTest]);
+  // Team changes propagate to already-initialised robots via the field-mode self-heal above: it
+  // reads robotTeamsRef on every telemetry tick, so a team flip is picked up within one status
+  // packet and — crucially — goes through the real set_mode_on/off event (not a raw variable
+  // write), which is what makes the firmware's onevent set_mode_off reset the robot (motors,
+  // line-following state, battery) when it's pulled back to the lab. A separate effect writing
+  // `field_mode` directly here would satisfy that same self-heal check without ever firing the
+  // event, silently skipping the reset.
 
   const robotReady = !!controledRobot && statuses[controledRobot] === 'ready';
   // True while the currently selected robot's colored test result is still the one showing in the
@@ -804,7 +807,7 @@ export function SoftwareMain() {
                         // Other robots only become selectable again once no test is running at
                         // all — not just between questions — so switching mid-test always
                         // requires explicitly stopping it (Arrêter) first.
-                        const locked = testing;
+                        const locked = testing || isRobotSelectionLockedByTour(tourStep);
 
                         return (
                           <RobotDot

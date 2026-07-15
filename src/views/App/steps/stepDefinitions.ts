@@ -427,7 +427,7 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Affiner',
     features: {
       ...NO_FEATURES,
-      teamSwitch: false,
+      teamSwitch: true,
       manualOp: true,
       treeVisible: true,
       treeEditable: true,

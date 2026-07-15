@@ -212,10 +212,17 @@ onevent button.center
  
 onevent set_mode_on
     field_mode = 1
- 
+
 onevent set_mode_off
+    # Same reset as the button.center "abort run" branch above — a robot pulled back to the lab
+    # mid-run (or with a drained battery, field_step == 2) must come back to a clean idle state,
+    # not whatever it was doing in the field.
     field_mode = 0
- 
+    field_step = 0
+    callsub stop_motors
+    callsub follow_reset
+    callsub set_battery
+
 onevent motor
     if motor_noise == 1 then
         current_speed = 0
@@ -550,7 +557,7 @@ onevent prox
             w[2] = W2*side  # center sensor pushes toward the chosen side
             hold = CLEAR_TICKS
             avoid = 1
-        elseif ir_working == 0 and touch_wait == 0 and (prox.horizontal[1] > CRASH_ON or prox.horizontal[2] > CRASH_ON or prox.horizontal[3] > CRASH_ON) then
+        elseif ir_working == 0 and touch_wait == 0 and (prox.horizontal[0] > CRASH_ON or prox.horizontal[1] > CRASH_ON or prox.horizontal[2] > CRASH_ON or prox.horizontal[3] > CRASH_ON or prox.horizontal[4] > CRASH_ON) then
             # blind robot doesn't react to the sensor, but a real impact still drives the
             # reading far above CRASH_ON — that's the actual crash trigger
             touch_wait = CRASH_TICKS

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Modal, useOverlayState, Button } from '@heroui/react';
-import { ChevronLeft, ChevronRight, CheckShape, Ban, Xmark } from '@gravity-ui/icons';
+import { ChevronLeft, ChevronRight, CheckShape, Ban, Xmark, ArrowRight } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { hasAllCriteria } from '../steps/stepDefinitions';
 
@@ -38,6 +38,13 @@ export function isPredictionLockedByTour(tourStep: number): boolean {
  * 26), so they don't jump ahead of the explanation. */
 export function isLaunchTestLockedByTour(tourStep: number): boolean {
   return tourStep >= 19 && tourStep <= 25;
+}
+
+/** Robot selection stays disabled during the tour's very first popover (step 1, introducing the
+ * left panel) — it only unlocks at step 2, which is the one that actually asks the student to
+ * select a robot, so they can't jump ahead of the explanation. */
+export function isRobotSelectionLockedByTour(tourStep: number): boolean {
+  return tourStep === 1;
 }
 
 /** Inline ready/repair badge for tour copy — same icon + color convention used everywhere else
@@ -93,7 +100,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   3: {
     target: '[data-tour="light-button"]',
-    text: 'Allume la lumière du robot avec ce bouton, regarde le résultat, puis éteins-la à nouveau.',
+    text: "Tu peux contrôler le robot depuis l'interface. Clique sur ce bouton pour allumer la lumière du robot, regarde le résultat, puis éteins-la à nouveau.",
     advanceOn: 'wait',
   },
   4: {
@@ -603,7 +610,7 @@ function PopoverCard({ stepDef, onOk, onBack }: { stepDef: TourStepDef; onOk: ()
       ) : (
         stepDef.advanceOn === 'ok' && (
           <Button variant="primary" size="sm" className="self-end" onPress={onOk}>
-            OK
+            <ArrowRight />
           </Button>
         )
       )}
