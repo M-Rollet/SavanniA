@@ -162,6 +162,12 @@ type ScenarioState = {
    * happens to have been tested earlier — see TourOverlay's step 27 → 28 transition. */
   testResultRobot: string | null;
   setTestResultRobot: (uuid: string | null) => void;
+  /** True once the student has flipped FinalTestModal's toggle to connect their AI to the robots
+   * (step 8) — while true, SoftwareMain pushes each robot's real computed `to_repair` value; while
+   * false, every robot gets 0 regardless of the algorithm tree, so nothing is refused until the
+   * student explicitly activates it. */
+  aiActive: boolean;
+  setAiActive: (active: boolean) => void;
   /** Lets SoftwareMain register a callback that stops any in-progress robot test; called before every step advance. */
   registerStopTesting: (fn: (() => void) | null) => void;
   resetApp: () => void;
@@ -213,6 +219,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [questionDropdownOpen, setQuestionDropdownOpen] = useState(false);
   const [robotTestActive, setRobotTestActive] = useState(false);
   const [testResultRobot, setTestResultRobot] = useState<string | null>(null);
+  const [aiActive, setAiActive] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Only ever relevant on step 1 — clear it once the user leaves that step.
@@ -235,6 +242,14 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (stepIndex !== 2) {
       setTestResultRobot(null);
+    }
+  }, [stepIndex]);
+
+  // Only ever relevant on step 8 (final field test) — clear it once the user leaves that step, so
+  // revisiting later always starts with the AI disconnected until the toggle is pressed again.
+  useEffect(() => {
+    if (stepIndex !== STEP_DEFS.length) {
+      setAiActive(false);
     }
   }, [stepIndex]);
 
@@ -373,6 +388,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     setGiveUpAvailable(false);
     setStep7DemoActive(false);
     setAlgorithmBuildArmed(false);
+    setAiActive(false);
   }, [
     robotConfigs,
     setStepIndex,
@@ -458,6 +474,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setRobotTestActive,
       testResultRobot,
       setTestResultRobot,
+      aiActive,
+      setAiActive,
       registerStopTesting,
       resetApp,
       isSettingsOpen,
@@ -520,6 +538,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setRobotTestActive,
       testResultRobot,
       setTestResultRobot,
+      aiActive,
+      setAiActive,
       registerStopTesting,
       resetApp,
       isSettingsOpen,

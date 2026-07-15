@@ -123,6 +123,7 @@ export function SoftwareMain() {
     treeEditCount,
     setTreeEditCount,
     step7DemoActive,
+    aiActive,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
   const isFinalStep = stepDef.index === STEP_DEFS.length;
@@ -196,6 +197,7 @@ export function SoftwareMain() {
   const algorithmModeRef = useRef(stepDef.features.algorithmMode);
   const algorithmTreeRef = useRef(algorithmTree);
   const correctedCriteriaRef = useRef(correctedCriteria);
+  const aiActiveRef = useRef(aiActive);
   useLayoutEffect(() => {
     testingRef.current = testing;
   }, [testing]);
@@ -229,6 +231,9 @@ export function SoftwareMain() {
   useLayoutEffect(() => {
     correctedCriteriaRef.current = correctedCriteria;
   }, [correctedCriteria]);
+  useLayoutEffect(() => {
+    aiActiveRef.current = aiActive;
+  }, [aiActive]);
 
   // Everyone regroups at the desk when reaching step 4: reset all robots back to "bureau", and
   // always land on the tree tab (not wherever "Opération manuelle" was left at, e.g. from step 2).
@@ -322,10 +327,12 @@ export function SoftwareMain() {
   // needing repair — mirrors DataTable's live "Prédiction" column (classifyWithAlgoTree over the
   // robot's recorded testResults). Pushed to the robot as `to_repair` so the firmware itself
   // refuses to launch a run and beeps the failure sound instead — the AI decides who goes out,
-  // same as it will later decide in the data table. At any other step (no algorithm tree yet)
-  // this is always 0, so it never affects step 3's raw terrain gathering.
+  // same as it will later decide in the data table. Gated on aiActive (FinalTestModal's toggle):
+  // until the student explicitly connects their AI to the robots, every robot gets 0 regardless of
+  // what the tree would say. At any other step (no algorithm tree yet) this is always 0 too, so it
+  // never affects step 3's raw terrain gathering.
   const computeToRepair = useCallback((uuid: string): 0 | 1 => {
-    if (!algorithmModeRef.current || !algorithmTreeRef.current) {
+    if (!aiActiveRef.current || !algorithmModeRef.current || !algorithmTreeRef.current) {
       return 0;
     }
     const testResults = physicalRobotDataRef.current[uuid]?.testResults ?? {};
@@ -355,12 +362,13 @@ export function SoftwareMain() {
     });
   }, [stepDef.features.fieldTest, user, computeToRepair]);
 
-  // Re-sync `to_repair` whenever the algorithm tree itself changes while step 8's field test is
-  // active. The push above only fires once, on the edge where field testing *starts* — it can't
-  // by itself cover a robot that was already sitting in the field before the tree had a value to
-  // give it (e.g. right after a page reload, DecisionTree.tsx's AlgorithmCanvas needs a render or
-  // two to restore its persisted tree into context). This effect catches that once algorithmTree
-  // stabilizes, and is a no-op resend on every other legitimate tree update.
+  // Re-sync `to_repair` whenever the algorithm tree changes, or the student flips FinalTestModal's
+  // toggle, while step 8's field test is active. The push above only fires once, on the edge where
+  // field testing *starts* — it can't by itself cover a robot that was already sitting in the
+  // field before the tree had a value to give it (e.g. right after a page reload, DecisionTree.tsx's
+  // AlgorithmCanvas needs a render or two to restore its persisted tree into context), nor the
+  // moment the student actually activates/deactivates their AI on an already-connected robot. This
+  // effect catches both, and is a no-op resend on every other legitimate tree update.
   useEffect(() => {
     if (!stepDef.features.fieldTest || !stepDef.features.algorithmMode) {
       return;
@@ -371,7 +379,7 @@ export function SoftwareMain() {
       }
       user.setVariables(uuid, new Map([['to_repair', [computeToRepair(uuid)]]]));
     });
-  }, [algorithmTree, stepDef.features.fieldTest, stepDef.features.algorithmMode, user, computeToRepair]);
+  }, [algorithmTree, aiActive, stepDef.features.fieldTest, stepDef.features.algorithmMode, user, computeToRepair]);
 
   // Records robot data with a small flying-dot animation from the tree to the corresponding
   // data-table cell (identified by its data-cell="<uuid>-<cellSuffix>" attribute), landing before
@@ -935,11 +943,6 @@ export function SoftwareMain() {
 
           <div data-tour="table-zone" className="flex flex-col gap-3 px-5 py-4 overflow-y-auto" style={{ flex: '1 1 0' }}>
             <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
-            {stepIndex === 1 && (
-              <p className="text-gray-500 text-xs -mt-2">
-                Clique sur un robot pour noter ce que tu observes, puis donne ton pronostic dans la colonne dédiée.
-              </p>
-            )}
             {stepDef.features.dataTable ? (
               <DataTable />
             ) : (
