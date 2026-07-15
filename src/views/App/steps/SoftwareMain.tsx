@@ -29,7 +29,7 @@ import {
   type RobotEntry,
   type ExternalRobotEntry,
 } from './stepDefinitions';
-import { CORE_PROFILES, MIN_ROBOTS, QUESTION_SEQ_TYPE } from '../robotProfiles';
+import { CORE_PROFILES, MIN_ROBOTS, QUESTION_SEQ_TYPE, getAnswerForQuestion } from '../robotProfiles';
 
 const SEQ_TIMEOUT_MS = 10000;
 // Playful stand-in names for the two synthetic "new robots" (step 5) when their slot has no
@@ -471,38 +471,37 @@ export function SoftwareMain() {
     [setPhysicalRobotData, setCorrectedCriteria]
   );
 
-  // Convert a raw seq_done value to a tree answer for the active question.
-  // Battery questions receive the battery level (1/2/3); all others: 1=yes, 0=no.
-  const seqDoneToAnswer = useCallback((value: number): 'yes' | 'no' => {
-    const q = activeQuestionRef.current;
-    if (q === 'battery_low') {
-      return value === 0 ? 'yes' : 'no';
-    }
-    if (q === 'battery_mid') {
-      return value === 1 ? 'yes' : 'no';
-    }
-    if (q === 'battery_full') {
-      return value === 2 ? 'yes' : 'no';
-    }
-    return value === 1 ? 'yes' : 'no';
-  }, []);
+  // Guards against answering the same question twice: `seq_done` can arrive together with its
+  // status-stream fallback (see Thymio2EventVariable's seq_confirmed — a dropped seq_done is
+  // covered by watching status_seq_type fall back to SEQ_NULL instead of relying on a single
+  // one-shot packet), and either can occasionally show up as a duplicate. Reset per question in
+  // handleActiveQuestion.
+  const seqAnsweredRef = useRef(false);
 
-  // Called when the robot emits seq_done — answers the frontier immediately.
-  const handleSeqDone = useCallback(
-    (value: number) => {
-      if (!testingRef.current) {
-        return;
-      }
-      // Clear the error timeout regardless of whether it was set.
-      if (autoAnswerTimerRef.current) {
-        clearTimeout(autoAnswerTimerRef.current);
-        autoAnswerTimerRef.current = null;
-      }
-      recordCriterionResult(value);
-      decisionTreeRef.current?.answerFrontier(seqDoneToAnswer(value));
-    },
-    [seqDoneToAnswer, recordCriterionResult]
-  );
+  // Called when the robot confirms a test sequence finished — either the real seq_done event,
+  // or its status-stream fallback. Both just mean "the sequence the app started has ended"; the
+  // actual answer comes from the config the app already pushed to the robot before starting the
+  // test (handleActiveQuestion below), not from either signal's payload.
+  const handleSeqDone = useCallback(() => {
+    if (!testingRef.current || seqAnsweredRef.current) {
+      return;
+    }
+    const uuid = controledRobotRef.current;
+    const questionId = activeQuestionRef.current;
+    const criterion = questionId && questionIdToCriterion(questionId);
+    const profileIndex = uuid ? robotConfigsRef.current.find(r => r.uuid === uuid)?.profileIndex : undefined;
+    const cfg = profileIndex !== undefined ? CORE_PROFILES[profileIndex]?.config : undefined;
+    if (!uuid || !questionId || !criterion || !cfg) {
+      return;
+    }
+    seqAnsweredRef.current = true;
+    if (autoAnswerTimerRef.current) {
+      clearTimeout(autoAnswerTimerRef.current);
+      autoAnswerTimerRef.current = null;
+    }
+    recordCriterionResult(cfg[criterion]);
+    decisionTreeRef.current?.answerFrontier(getAnswerForQuestion(questionId, cfg));
+  }, [recordCriterionResult]);
 
   // Guards the field-mode reconciliation below against piling up a second retry for a robot
   // that already has one in flight (the store's own emitEvent already retries a few times
@@ -532,8 +531,8 @@ export function SoftwareMain() {
             light: vars.status_light ?? 0,
           });
         }
-        if (vars.seq_done !== undefined && uuid === controledRobotRef.current) {
-          handleSeqDone(vars.seq_done);
+        if ((vars.seq_done !== undefined || vars.seq_confirmed !== undefined) && uuid === controledRobotRef.current) {
+          handleSeqDone();
         }
         // Self-heal field_mode from the robot's own telemetry (emitted continuously via
         // onevent prox in the firmware) instead of trusting the one-shot set_mode_on/off call
@@ -682,6 +681,7 @@ export function SoftwareMain() {
         clearTimeout(autoAnswerTimerRef.current);
         autoAnswerTimerRef.current = null;
       }
+      seqAnsweredRef.current = false;
       console.log('[SoftwareMain] handleActiveQuestion', questionId, 'robot:', controledRobot);
       if (!questionId || !controledRobot) {
         return;

@@ -16,6 +16,17 @@ const SEQ_TEST_IR = 4;
 const SEQ_TEST_BATTERY = 5;
 const SEQ_MOVE = 7;
 
+// The seq types that end with `emit seq_done` in the firmware (aesl.resource.ts's timer0
+// handler) — used by the status-stream fallback below to recognise a genuine test-sequence
+// completion (as opposed to e.g. SEQ_MOVE or SEQ_IDENTIFY, which reset without a seq_done).
+const TEST_SEQ_TYPES = new Set([
+  SEQ_TEST_NOISE,
+  SEQ_TEST_LIGHT_WORKING,
+  SEQ_TEST_LIGHT_FAILING,
+  SEQ_TEST_IR,
+  SEQ_TEST_BATTERY,
+]);
+
 type StatusSnapshot = { light: number; seqType: number; fieldMode: number };
 
 // Maps each event name to a predicate that, once true in the status stream,
@@ -55,6 +66,8 @@ export class Thymio2EventVariable implements Thymio {
   private StatusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL, fieldMode: 0 };
   private pendingAck: { predicate: (s: StatusSnapshot) => boolean; resolve: (confirmed: boolean) => void } | null =
     null;
+  // Last seqType seen on the status stream — used to detect the SEQ_NULL falling edge below.
+  private lastSeqType: number = SEQ_NULL;
 
   constructor({ uuid, node }: { uuid: string; node: INode }) {
     this.uuid = uuid;
@@ -261,10 +274,20 @@ export class Thymio2EventVariable implements Thymio {
           break;
         case 'status': {
           const arr = (value as number[]) ?? [];
-          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: arr[7] ?? 0, fieldMode: arr[9] ?? 0 };
+          const newSeqType = arr[7] ?? 0;
+          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: newSeqType, fieldMode: arr[9] ?? 0 };
           if (this.pendingAck?.predicate(this.StatusSnapshot)) {
             this.pendingAck.resolve(true);
           }
+          // Fallback for a dropped `seq_done`: the firmware resets seq_type to SEQ_NULL in the
+          // exact same VM tick that emits seq_done, and status is broadcast continuously
+          // (~10/s via onevent prox) rather than as a single packet. So this falling edge is an
+          // equally valid "test finished" signal that only needs one surviving status packet
+          // after completion — not the exact edge one — to be detected.
+          if (this.lastSeqType !== SEQ_NULL && TEST_SEQ_TYPES.has(this.lastSeqType) && newSeqType === SEQ_NULL) {
+            this.eventCallback({ seq_confirmed: this.lastSeqType });
+          }
+          this.lastSeqType = newSeqType;
           this.eventCallback({
             status_battery: arr[0] ?? 0,
             status_mic: arr[1] ?? 0,
