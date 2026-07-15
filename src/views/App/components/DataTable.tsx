@@ -218,11 +218,13 @@ export function DataTable() {
       <table className="w-full text-xs border-collapse">
         <thead>
           <tr className="bg-gray-50">
-            <th className="text-left align-top font-medium text-gray-400 px-3 py-2 border border-gray-200">Robot</th>
+            <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-3 py-2 border border-gray-200">
+              Robot
+            </th>
             {CRITERIA.map(c => (
               <th
                 key={c}
-                className="text-left align-top font-medium text-gray-400 px-2 py-2 leading-tight border border-gray-200"
+                className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 leading-tight border border-gray-200"
               >
                 {CRITERIA_LABELS[c].map(word => (
                   <span key={word} className="block">
@@ -232,17 +234,17 @@ export function DataTable() {
               </th>
             ))}
             {showPrediction && (
-              <th className="text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
+              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
                 Pronostic
               </th>
             )}
             {showLiveTree && (
-              <th className="text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
+              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
                 Prédiction
               </th>
             )}
             {showResult && (
-              <th className="text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
+              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
                 Terrain
               </th>
             )}
