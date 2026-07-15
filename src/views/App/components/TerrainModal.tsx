@@ -108,7 +108,7 @@ export function TerrainModal() {
     const entry = physicalRobotData[uuid] ?? EMPTY_ROBOT_ENTRY;
     setPhysicalRobotData({
       ...physicalRobotData,
-      [uuid]: { ...entry, observation: { category: entry.observation?.category ?? 'ready', notes } },
+      [uuid]: { ...entry, observation: { category: entry.observation?.category ?? null, notes } },
     });
   };
 

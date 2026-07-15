@@ -258,7 +258,7 @@ export function DataTable() {
             const canPredict = stepIndex > 3 || row.entry?.tested === true;
             const predicted =
               activeTree && canPredict ? classifyWithAlgoTree(activeTree, row.entry?.testResults ?? {}) : null;
-            const observed = row.entry?.observation?.category;
+            const observed = row.entry?.observation?.category ?? undefined;
             const mismatch = showResult && !!predicted && !!observed && predicted !== observed;
             // Same condition as the tree's own colored path (see DecisionTree.tsx): stays lit in
             // the robot's color from the moment its test lands here until a different robot gets

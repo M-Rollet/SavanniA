@@ -153,7 +153,7 @@ export function SoftwareMain() {
   const algorithmDatasetCount = useMemo(
     () =>
       robotConfigs.filter(
-        r => hasAllCriteria(physicalRobotData[r.uuid]) && physicalRobotData[r.uuid]?.observation != null
+        r => hasAllCriteria(physicalRobotData[r.uuid]) && physicalRobotData[r.uuid]?.observation?.category != null
       ).length + externalDataset.length,
     [robotConfigs, physicalRobotData, externalDataset]
   );

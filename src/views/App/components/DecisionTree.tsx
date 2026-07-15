@@ -739,7 +739,7 @@ const ManualTreeCanvas = forwardRef<DecisionTreeHandle, ManualTreeProps>(functio
     const addPlacement = (entry: RobotEntry, uuid: string, color: string, label: string, countTowardStats: boolean) => {
       if (
         countTowardStats &&
-        entry.observation != null &&
+        entry.observation?.category != null &&
         ALL_CRITERIA.every(c => entry.testResults[c] !== undefined)
       ) {
         stats.total += 1;
@@ -1636,7 +1636,11 @@ function AlgorithmTreeCanvas({
   const dataset: DatasetEntry[] = [
     ...robotConfigs.flatMap((r): DatasetEntry[] => {
       const entry = physicalRobotData[r.uuid];
-      if (!entry?.observation || !ALL_CRITERIA.every(c => entry.testResults[c] !== undefined)) {
+      if (!entry || !ALL_CRITERIA.every(c => entry.testResults[c] !== undefined)) {
+        return [];
+      }
+      const category = entry.observation?.category;
+      if (!category) {
         return [];
       }
       const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
@@ -1646,22 +1650,20 @@ function AlgorithmTreeCanvas({
           label: colorDef?.label ?? r.color,
           color: colorDef?.hex ?? '#a1a1a1',
           testResults: entry.testResults,
-          category: entry.observation.category,
+          category,
         },
       ];
     }),
     // Stand-ins for the 5th/6th core robots (see ScenarioContext's newRobotsDataset) — folded in
     // here too so "avec 6 robots" (this step's intro) holds even without 6 physical units.
-    ...newRobotsDataset.flatMap((e): DatasetEntry[] =>
-      e.observation
-        ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category: e.observation.category }]
-        : []
-    ),
-    ...externalDataset.flatMap((e): DatasetEntry[] =>
-      e.observation
-        ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category: e.observation.category }]
-        : []
-    ),
+    ...newRobotsDataset.flatMap((e): DatasetEntry[] => {
+      const category = e.observation?.category;
+      return category ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category }] : [];
+    }),
+    ...externalDataset.flatMap((e): DatasetEntry[] => {
+      const category = e.observation?.category;
+      return category ? [{ id: e.id, label: e.label, color: '#94a3b8', testResults: e.testResults, category }] : [];
+    }),
   ];
 
   if (dataset.length === 0) {

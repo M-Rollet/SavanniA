@@ -11,7 +11,7 @@ export type RobotEntry = {
   testResults: Partial<Record<Criterion, number>>;
   /** True once the robot has been run through the decision tree down to a leaf. */
   tested: boolean;
-  observation: { category: 'ready' | 'repair'; notes: string } | null;
+  observation: { category: 'ready' | 'repair' | null; notes: string } | null;
   /** Student's own GO/STAY commitment, made from their step-1 manual observations before the
    * tree announces its verdict (PRIMM's Predict). Optional: entries saved before this field
    * existed won't have it. */
@@ -417,7 +417,8 @@ export const STEP_DEFS: StepDef[] = [
     shortLabel: 'Terrain',
     features: { ...NO_FEATURES, observationEntry: true, fieldTest: true },
     canAdvance: ({ physicalRobotData, robotConfigs }) =>
-      robotConfigs.length > 0 && robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.observation != null),
+      robotConfigs.length > 0 &&
+      robotConfigs.every(({ uuid }) => physicalRobotData[uuid]?.observation?.category != null),
     objective: 'Découvrir ce que valent vraiment tes prédictions.',
     action: "Lance chaque robot sur le circuit et note s'il réussit.",
   },
