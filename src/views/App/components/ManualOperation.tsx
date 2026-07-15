@@ -175,6 +175,10 @@ function RadarGauge({ cx, cy, w, h, values }: RadarGaugeProps) {
 }
 
 // ── ManualOperation ───────────────────────────────────────────
+// Mirrors the firmware's move duration (aesl.resource.ts: SHORT_DIST_TICKS=40 × timer.period[0]=50ms)
+// so the button's active feedback lasts as long as the robot is actually moving.
+const MOVE_FEEDBACK_MS = 2000;
+
 type Props = {
   robotId?: string;
   level?: number;
@@ -199,12 +203,26 @@ export function ManualOperation({
   // turns the light on, consumed (and cleared) the moment they turn it back off.
   const litOnceRef = useRef(false);
 
+  // Which move button (if any) should still show as active — cleared automatically once the
+  // robot has had time to finish its move, giving the student visual feedback that it moved.
+  const [activeMove, setActiveMove] = useState<'forward' | 'backward' | null>(null);
+  const moveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Reset the local light toggle when the selected robot changes — without remounting the whole
   // component (which used to reload the schematic image and blank the gauges for a frame).
   useEffect(() => {
     setLightActive(false);
     litOnceRef.current = false;
+    setActiveMove(null);
+    if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
   }, [robotId]);
+
+  // Clear the pending timeout on unmount so it doesn't fire against a stale component instance.
+  useEffect(() => {
+    return () => {
+      if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
+    };
+  }, []);
 
   const handleLight = () => {
     const next = !lightActive;
@@ -218,6 +236,13 @@ export function ManualOperation({
         setTimeout(() => setTourStep(4), TOUR_ADVANCE_DELAY_MS);
       }
     }
+  };
+
+  const handleMove = (direction: 'forward' | 'backward') => {
+    onEmitEvent?.(direction === 'forward' ? 'go_forward' : 'go_backward');
+    setActiveMove(direction);
+    if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
+    moveTimeoutRef.current = setTimeout(() => setActiveMove(null), MOVE_FEEDBACK_MS);
   };
 
   return (
@@ -266,9 +291,9 @@ export function ManualOperation({
                 <Button
                   isIconOnly
                   size="sm"
-                  variant="tertiary"
+                  variant={activeMove === 'backward' ? 'primary' : 'tertiary'}
                   isDisabled={disabled}
-                  onPress={() => onEmitEvent?.('go_backward')}
+                  onPress={() => handleMove('backward')}
                 >
                   <ArrowRotateLeft />
                 </Button>
@@ -279,9 +304,9 @@ export function ManualOperation({
                 <Button
                   isIconOnly
                   size="sm"
-                  variant="tertiary"
+                  variant={activeMove === 'forward' ? 'primary' : 'tertiary'}
                   isDisabled={disabled}
-                  onPress={() => onEmitEvent?.('go_forward')}
+                  onPress={() => handleMove('forward')}
                 >
                   <ArrowRotateRight />
                 </Button>
