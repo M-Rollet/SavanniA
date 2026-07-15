@@ -379,9 +379,13 @@ export function Step7IntroModal() {
   const DOT_COUNT = QUIZ_PAGE + 1;
   const showPreBuildCard = active && page === LAST_PAGE;
   const [buildStarted, setBuildStarted] = useState(false);
-  // Anchors the pre-build card just outside the real tree panel's right edge (see SoftwareMain's
-  // [data-tour="tree-zone"]) instead of a fixed viewport position, so it tracks the actual layout.
-  const treeRect = useTourTargetRect(showPreBuildCard ? '[data-tour="tree-zone"]' : null);
+  // Anchors the pre-build card just outside the tree's root node (React Flow auto-generates
+  // `data-testid="rf__node-{id}"` on every node wrapper — same convention as the tour's
+  // `rf__node-d1`/`rf__node-l1` targets in TourOverlay.tsx) instead of a fixed viewport position,
+  // so it tracks the node's actual position even if the canvas is panned/zoomed. Targets `.node-card`
+  // rather than the wrapper itself, since the wrapper's box also covers the "Ajouter une question"
+  // button rendered below it (RootNode.tsx) — same wrapper-vs-card note as TourOverlay's l1 steps.
+  const rootNodeRect = useTourTargetRect(showPreBuildCard ? '[data-testid="rf__node-root"] .node-card' : null);
 
   useEffect(() => {
     setAnsweredThisPage(false);
@@ -671,19 +675,19 @@ export function Step7IntroModal() {
         </Modal.Backdrop>
       </Modal>
 
-      {/* Pre-build card: anchored just outside the real tree panel's right edge (not a blocking
-          modal over it), and doesn't start the build itself — that only happens once "Construire"
-          is clicked (see handleBuild/buildStarted above). No dots: this isn't one of the numbered
-          pages the student reads through. Waits for treeRect since it's positioned relative to
-          the tree panel's actual measured position, not a fixed viewport guess. */}
+      {/* Pre-build card: anchored just outside the root node's right edge (not a blocking modal
+          over it), and doesn't start the build itself — that only happens once "Construire" is
+          clicked (see handleBuild/buildStarted above). No dots: this isn't one of the numbered
+          pages the student reads through. Waits for rootNodeRect since it's positioned relative
+          to the root node's actual measured position, not a fixed viewport guess. */}
       {showPreBuildCard &&
-        treeRect &&
+        rootNodeRect &&
         createPortal(
           <div
             className="fixed z-[9999] w-[340px] max-w-[85vw]"
             style={{
-              left: treeRect.left + treeRect.width + 16,
-              top: treeRect.top + treeRect.height / 2,
+              left: rootNodeRect.left + rootNodeRect.width + 16,
+              top: rootNodeRect.top + rootNodeRect.height / 2,
               transform: 'translateY(-50%)',
             }}
           >

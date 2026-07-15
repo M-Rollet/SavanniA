@@ -40,9 +40,18 @@ export function TimelinePanel() {
     setDataCheckFailed,
     tourStep,
     giveUpAvailable,
+    step7DemoActive,
+    algorithmBuildActive,
   } = useScenario();
   const current = getStepDef(stepIndex);
-  const canAdvance = current.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy });
+  const canAdvance = current.canAdvance({
+    physicalRobotData,
+    robotConfigs,
+    algorithmTree,
+    treeAccuracy,
+    step7DemoActive,
+    algorithmBuildActive,
+  });
   const isLastStep = stepIndex >= STEP_DEFS.length;
   const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested === true).length;
 

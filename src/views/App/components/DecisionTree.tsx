@@ -1163,7 +1163,7 @@ function AlgorithmCanvas({
    * newly-arrived robot still works fine against a frozen tree; it just doesn't trigger a rebuild. */
   frozen?: boolean;
 }) {
-  const { setAlgorithmTree, algorithmBuildArmed, setStep7DemoActive } = useScenario();
+  const { setAlgorithmTree, algorithmBuildArmed, setStep7DemoActive, setAlgorithmBuildActive } = useScenario();
 
   // previewMode (Step7IntroModal's throwaway demo) never touches storage — see the demo/real
   // split at SoftwareMain's algorithmMode branch.
@@ -1213,6 +1213,23 @@ function AlgorithmCanvas({
     setAutoBuildQueue([id]);
     demoBuildStartedRef.current = true;
   }, [edges.length, addFirstChild, algorithmBuildArmed, frozen]);
+
+  // Reports to context whether whichever canvas is currently mounted (demo or real) still has a
+  // node actively cycling through candidate questions. A node already looks structurally complete
+  // (type 'question' with two 'leaf' children — see toAlgoTree/isAlgoTreeComplete) as soon as the
+  // *first* candidate is tried, well before the auto-build has compared every candidate, settled
+  // on the best one, and possibly recursed into impure leaves — so step 7's canAdvance needs this
+  // on top of the structural check, or "Étape suivante" would unlock mid-animation.
+  useEffect(() => {
+    setAlgorithmBuildActive(autoBuildQueue.length > 0);
+  }, [autoBuildQueue, setAlgorithmBuildActive]);
+
+  // Unmount-only reset (stable setter, so this cleanup never fires between renders — only when
+  // this canvas instance itself goes away) so a build interrupted mid-flight — e.g. navigating
+  // away from step 7 while the queue is non-empty — can't leave the flag stuck true forever.
+  useEffect(() => {
+    return () => setAlgorithmBuildActive(false);
+  }, [setAlgorithmBuildActive]);
 
   // previewMode is a one-shot hands-off animation (Step7IntroModal's demo, mounted with no
   // Controls and pointer-events disabled — see the wrapper div below). Once its own auto-build

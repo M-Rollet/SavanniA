@@ -344,6 +344,18 @@ export type CanAdvanceCtx = {
   robotConfigs: RobotConfig[];
   algorithmTree: AlgoTree | null;
   treeAccuracy: TreeAccuracy | null;
+  /** True while Step7IntroModal's throwaway preview build is playing on the tree panel (see
+   * SoftwareMain's step7DemoActive swap). That demo writes its own completed tree into the same
+   * `algorithmTree` context slot to drive its visuals, so step 7's canAdvance must ignore
+   * `algorithmTree` until control has handed back to the real, persisted canvas — otherwise
+   * "Étape suivante" unlocks off the preview's finish, before the real tree has even started. */
+  step7DemoActive: boolean;
+  /** True while whichever algorithm-mode canvas is mounted still has a node cycling through
+   * candidate questions (see AlgorithmCanvas's autoBuildQueue). A tree already reads as
+   * structurally complete as soon as a node's first candidate question is tried, long before the
+   * auto-build has actually finished comparing options and recursing into impure leaves — see the
+   * comment on ScenarioContext's `algorithmBuildActive`. */
+  algorithmBuildActive: boolean;
 };
 
 export type StepDef = {
@@ -495,7 +507,11 @@ export const STEP_DEFS: StepDef[] = [
     label: "Construire l'algorithme",
     shortLabel: 'Algorithme',
     features: { ...NO_FEATURES, algorithmMode: true, dataTable: true },
-    canAdvance: ({ algorithmTree }) => algorithmTree !== null && isAlgoTreeComplete(algorithmTree),
+    canAdvance: ({ algorithmTree, step7DemoActive, algorithmBuildActive }) =>
+      !step7DemoActive &&
+      !algorithmBuildActive &&
+      algorithmTree !== null &&
+      isAlgoTreeComplete(algorithmTree),
     objective: "Trouver une méthode automatique pour construire l'arbre.",
     action:
       "Regarde l'algorithme choisir automatiquement, à chaque étape, la question qui mélange le moins les deux groupes.",

@@ -138,6 +138,15 @@ type ScenarioState = {
    * never touches the real algorithmTree the student goes on to build by hand. */
   step7DemoActive: boolean;
   setStep7DemoActive: (active: boolean) => void;
+  /** True while whichever algorithm-mode canvas is currently mounted (the demo preview or the
+   * real one) has nodes actively cycling through candidate questions — i.e. its auto-build queue
+   * is non-empty. A node picks up a `type: 'question'` with two `type: 'leaf'` children as soon as
+   * the *first* candidate question is tried, so the tree already reads as structurally complete
+   * (see isAlgoTreeComplete) well before the auto-build has finished comparing every candidate,
+   * settled on the best one, and recursed into any impure leaves. Step 7's canAdvance must also
+   * check this, or "Étape suivante" unlocks mid-animation. */
+  algorithmBuildActive: boolean;
+  setAlgorithmBuildActive: (active: boolean) => void;
   /** True once step 7's intro modal has had its "Construire" button pressed (at least once,
    * persisted) — gates the algorithm-mode tree's auto-build so it never starts, even silently in
    * the background, while the student is still reading through the intro modal. Reset on a full
@@ -212,6 +221,7 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
   const [treeEditCount, setTreeEditCount] = useState(0);
   const [giveUpAvailable, setGiveUpAvailable] = useState(false);
   const [step7DemoActive, setStep7DemoActive] = useState(false);
+  const [algorithmBuildActive, setAlgorithmBuildActive] = useState(false);
   const [algorithmBuildArmed, setAlgorithmBuildArmed] = useLocalStorage<boolean>(
     'scenario:algorithmBuildArmed',
     false
@@ -309,12 +319,30 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
     }
     // activeRobotConfigs (not robotConfigs): steps 1-4's canAdvance checks must only require the
     // robots actually available at that step, not every configured robot.
-    if (!current.canAdvance({ physicalRobotData, robotConfigs: activeRobotConfigs, algorithmTree, treeAccuracy })) {
+    if (
+      !current.canAdvance({
+        physicalRobotData,
+        robotConfigs: activeRobotConfigs,
+        algorithmTree,
+        treeAccuracy,
+        step7DemoActive,
+        algorithmBuildActive,
+      })
+    ) {
       return;
     }
     stopTestingRef.current?.();
     setStepIndex(stepIndex + 1);
-  }, [stepIndex, physicalRobotData, activeRobotConfigs, algorithmTree, treeAccuracy, setStepIndex]);
+  }, [
+    stepIndex,
+    physicalRobotData,
+    activeRobotConfigs,
+    algorithmTree,
+    treeAccuracy,
+    step7DemoActive,
+    algorithmBuildActive,
+    setStepIndex,
+  ]);
 
   // Keep a ref so the auto-assign effect always reads latest teams without re-triggering.
   const robotTeamsRef = useRef(robotTeams);
@@ -466,6 +494,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setGiveUpAvailable,
       step7DemoActive,
       setStep7DemoActive,
+      algorithmBuildActive,
+      setAlgorithmBuildActive,
       algorithmBuildArmed,
       setAlgorithmBuildArmed,
       questionDropdownOpen,
@@ -530,6 +560,8 @@ export function ScenarioProvider({ children }: { children: ReactNode }) {
       setGiveUpAvailable,
       step7DemoActive,
       setStep7DemoActive,
+      algorithmBuildActive,
+      setAlgorithmBuildActive,
       algorithmBuildArmed,
       setAlgorithmBuildArmed,
       questionDropdownOpen,

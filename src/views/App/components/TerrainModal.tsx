@@ -38,11 +38,20 @@ export function TerrainModal() {
     treeAccuracy,
     observationCheckFailed,
     setObservationCheckFailed,
+    step7DemoActive,
+    algorithmBuildActive,
   } = useScenario();
 
   const stepDef = getStepDef(stepIndex);
   const isOpen = stepDef.features.observationEntry;
-  const canContinue = STEP_3.canAdvance({ physicalRobotData, robotConfigs, algorithmTree, treeAccuracy });
+  const canContinue = STEP_3.canAdvance({
+    physicalRobotData,
+    robotConfigs,
+    algorithmTree,
+    treeAccuracy,
+    step7DemoActive,
+    algorithmBuildActive,
+  });
   const wrongUuids = useMemo(
     () => (observationCheckFailed ? getWrongObservations(robotConfigs, physicalRobotData) : null),
     [observationCheckFailed, robotConfigs, physicalRobotData]
