@@ -489,8 +489,8 @@ export function Step7IntroModal() {
                     {page === 0 && (
                       <>
                         <p className="text-gray-600 text-sm">
-                          Avec 6 robots, trier à la main restait possible. Mais une autre équipe vient d'en envoyer 30
-                          de plus — impossible de continuer au feeling&nbsp;! Il nous faut une méthode qui marche à tous les
+                          Avec 6 robots, trier à la main restait faisable. Mais avec 30 robots
+                          de plus, impossible de continuer avec notre intuition&nbsp;! Il nous faut une méthode qui marche à tous les
                           coups, quel que soit le nombre de robots. Découvrons comment un ordinateur s'y prend.
                         </p>
                         <div className="flex-1 flex items-center justify-center">
