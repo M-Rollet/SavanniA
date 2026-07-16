@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Modal, useOverlayState } from '@heroui/react';
+import { Modal, useOverlayState, Button } from '@heroui/react';
 import { ArrowRight } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
 import { getStepDef } from '../steps/stepDefinitions';
@@ -22,9 +22,12 @@ const NEW_ROBOTS_SETTLE_MS = ((MAX_NEW_ROBOT_ROWS - 1) * ROW_STAGGER_S + ROW_DUR
  * Dismissal is remembered in localStorage so reloads mid-step don't re-show it.
  *
  * Dismissal is deliberately hard to trigger by accident: backdrop clicks and Escape are
- * disabled, and the button is a raw <button> whose handler requires a trusted user event —
- * synthetic clicks (observed intermittently from the overlay/toast stack shortly after mount)
- * must not silently mark the intro as seen, or it would never be shown again.
+ * disabled, and the dismiss button is wired via `onClick` (not HeroUI's `onPress`) because the
+ * handler requires a trusted user event — synthetic clicks (observed intermittently from the
+ * overlay/toast stack shortly after mount) must not silently mark the intro as seen, or it would
+ * never be shown again. Note that `onPress`'s `PressEvent` has no `isTrusted`, and keyboard
+ * activation (Enter/Space) is delivered to `onClick` as a synthesized, always-untrusted
+ * `MouseEvent`, so keyboard dismissal of this button won't register — accepted trade-off.
  */
 export function StepIntroModal() {
   const { stepIndex, tourSeen, tour4Seen, setTourStep, setNewRobotsArmed } = useScenario();
@@ -85,14 +88,10 @@ export function StepIntroModal() {
             </Modal.Body>
 
             <Modal.Footer>
-              <button
-                data-testid="step-intro-dismiss"
-                onClick={handleDismissClick}
-                className="text-sm font-medium px-5 py-2 rounded-full border border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)] hover:bg-[var(--accent-hover)] transition-colors flex items-center gap-1.5"
-              >
+              <Button data-testid="step-intro-dismiss" variant="primary" onClick={handleDismissClick}>
                 C'est parti
                 <ArrowRight width={14} height={14} />
-              </button>
+              </Button>
             </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
