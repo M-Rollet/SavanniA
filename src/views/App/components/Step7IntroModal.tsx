@@ -509,13 +509,13 @@ export function Step7IntroModal() {
                         </p>
                         <ChoiceExercise
                           correct="medium"
-                          question="D'après toi, ce partage est-il\u00A0:"
+                          question="D'après toi, ce partage est-il&nbsp;:"
                           options={[
                             { id: 'very-bad', label: 'Très mal trié' },
                             { id: 'medium', label: 'Moyennement trié' },
                             { id: 'perfect', label: 'Parfaitement trié' },
                           ]}
-                          feedback="Bien vu\u00A0! Il reste quelques robots du mauvais côté, donc ce n'est pas parfait — mais la grande majorité est bien placée\u00A0: c'est un bon partage."
+                          feedback="Bien vu&nbsp;! Il reste quelques robots du mauvais côté, donc ce n'est pas parfait — mais la grande majorité est bien placée&nbsp;: c'est un bon partage."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex justify-center">
@@ -537,7 +537,7 @@ export function Step7IntroModal() {
                             </>
                           }
                           options={abEqualOptions('Partage A', 'Partage B', "Aussi triés l'un que l'autre")}
-                          feedback="C'est juste, les deux moitiés du partage B sont plus pures\u00A0: les robots prêts à partir et ceux à réparer sont bien séparés."
+                          feedback="C'est juste, les deux moitiés du partage B sont plus pures&nbsp;: les robots prêts à partir et ceux à réparer sont bien séparés."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-10 justify-center">
@@ -554,9 +554,9 @@ export function Step7IntroModal() {
                         <p className="text-gray-600 text-sm">Continuons avec cet autre exemple.</p>
                         <ChoiceExercise
                           correct="equal"
-                          question="D’après toi, quel partage est le plus réussi\u00A0?"
+                          question="D’après toi, quel partage est le plus réussi&nbsp;?"
                           options={abEqualOptions('Partage A', 'Partage B', "Aussi triés l'un que l'autre")}
-                          feedback="Exactement\u00A0! Les deux partages ont la même répartition dans chaque moitié (5 contre 1)\u00A0: seul l'ordre des robots change, pas la qualité du partage."
+                          feedback="Exactement&nbsp;! Les deux partages ont la même répartition dans chaque moitié (5 contre 1)&nbsp;: seul l'ordre des robots change, pas la qualité du partage."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-10 justify-center">
@@ -576,7 +576,7 @@ export function Step7IntroModal() {
                         </p>
                         <ChoiceExercise
                           correct="B"
-                          question="Laquelle de ces deux questions sépare le mieux les deux groupes\u00A0?"
+                          question="Laquelle de ces deux questions sépare le mieux les deux groupes&nbsp;?"
                           options={abEqualOptions('Question A', 'Question B', "C'est la même chose")}
                           feedback="C'est juste. La question B sépare les robots en deux groupes plus purs que la question A. Ici on devrait choisir la question B pour construire le meilleur arbre."
                           onAnswered={() => setAnsweredThisPage(true)}
@@ -634,9 +634,9 @@ export function Step7IntroModal() {
                         </p>
                         <ChoiceExercise
                           correct="B"
-                          question="En te basant sur le score de Gini, laquelle est la meilleure question\u00A0?"
+                          question="En te basant sur le score de Gini, laquelle est la meilleure question&nbsp;?"
                           options={abEqualOptions('Question A', 'Question B', "C'est la même chose")}
-                          feedback="Bravo\u00A0! À l'œil, ces deux questions se valaient presque. Mais le score de Gini ne se trompe pas\u00A0: la question B sépare un peu mieux les robots."
+                          feedback="Bravo&nbsp;! À l'œil, ces deux questions se valaient presque. Mais le score de Gini ne se trompe pas&nbsp;: la question B sépare un peu mieux les robots."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-8 justify-center">

@@ -786,7 +786,7 @@ export function SoftwareMain() {
                 data-tour="robot-selector"
                 className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1"
               >
-                <img src={thymioIcon} alt="Robot\u00A0:" className="h-10 mr-1 transition-all duration-300" />
+                <img src={thymioIcon} alt="Robot&nbsp;:" className="h-10 mr-1 transition-all duration-300" />
 
                 {stepDef.features.algorithmMode ? (
                   <span className="text-sm font-medium text-gray-600 px-1">

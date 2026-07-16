@@ -555,13 +555,13 @@ export function TourOverlay() {
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_1}
-        text="Bien joué\u00A0! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant sur les autres cases de sa ligne dans le tableau."
+        text="Bien joué&nbsp;! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant sur les autres cases de sa ligne dans le tableau."
         onDismiss={() => setTourStep(TOUR_WAIT_ROW_COMPLETE)}
       />
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_2}
-        text="Parfait\u00A0! Tu sais maintenant comment observer un robot et donner ton pronostic. Fais de même pour tous les autres robots avant de passer à l'étape suivante."
+        text="Parfait&nbsp;! Tu sais maintenant comment observer un robot et donner ton pronostic. Fais de même pour tous les autres robots avant de passer à l'étape suivante."
         onDismiss={finishTour}
       />
 

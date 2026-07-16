@@ -140,7 +140,7 @@ export function TerrainModal() {
                   >
                     <h3 className="text-sm font-semibold text-gray-700">Statut de chaque robot</h3>
                     <p className="text-gray-500 text-xs mt-0.5">
-                      Indique si chaque robot est prêt à partir ou doit être réparé, et note ce que tu observes.
+                      Indique si chaque robot est prêt à partir ou doit être réparé, selon le résultat sur le terrain. Note ce que tu observes.
                     </p>
                   </motion.div>
                 )}
