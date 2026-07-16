@@ -45,7 +45,7 @@ const ASEBA_CONSTANTS = {
     BLACK_TH: 300,
 
     // obstacle avoidance
-    OBST_ON: 1600,   // prox value that triggers avoidance (lower = react earlier)
+    OBST_ON: 1800,   // prox value that triggers avoidance (lower = react earlier)
     OBST_BIAS: 30,   // pull toward obstacle side (higher = tighter orbit)
     OBST_SHIFT: 7,   // repulsion = dot(prox, w) >> SHIFT (7 = twice as strong)
     W0: -15,          // signed sensor weights, left → right;
@@ -547,7 +547,7 @@ onevent prox
     if field_step == 1 and avoid == 0 then
         callsub check_black_zone
         # obstacle detection: only when IR "works"; if not, robot stays blind
-        if ir_working == 1 and (prox.horizontal[0] > OBST_ON or prox.horizontal[1] > OBST_ON or prox.horizontal[2] > OBST_ON or prox.horizontal[3] > OBST_ON or prox.horizontal[4] > OBST_ON) then
+        if ir_working == 1 and (prox.horizontal[0] > OBST_ON/2 or prox.horizontal[1] > OBST_ON or prox.horizontal[2] > OBST_ON or prox.horizontal[3] > OBST_ON or prox.horizontal[0] > OBST_ON/2) then
             # pick avoidance side: pass on the side where the obstacle is smaller
             if prox.horizontal[0] + prox.horizontal[1] > prox.horizontal[3] + prox.horizontal[4] then
                 side = -1
