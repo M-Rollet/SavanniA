@@ -547,7 +547,7 @@ onevent prox
     if field_step == 1 and avoid == 0 then
         callsub check_black_zone
         # obstacle detection: only when IR "works"; if not, robot stays blind
-        if ir_working == 1 and (prox.horizontal[1] > OBST_ON or prox.horizontal[2] > OBST_ON or prox.horizontal[3] > OBST_ON) then
+        if ir_working == 1 and (prox.horizontal[0] > OBST_ON or prox.horizontal[1] > OBST_ON or prox.horizontal[2] > OBST_ON or prox.horizontal[3] > OBST_ON or prox.horizontal[4] > OBST_ON) then
             # pick avoidance side: pass on the side where the obstacle is smaller
             if prox.horizontal[0] + prox.horizontal[1] > prox.horizontal[3] + prox.horizontal[4] then
                 side = -1
