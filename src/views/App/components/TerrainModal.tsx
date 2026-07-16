@@ -57,12 +57,15 @@ export function TerrainModal() {
     [observationCheckFailed, robotConfigs, physicalRobotData]
   );
 
-  // Robots only appear once the user has read the explanation and pressed "C'est parti".
+  // Robots only appear a few seconds after the user reaches this step, giving them time to read the explanation first.
   const [started, setStarted] = useState(false);
   useEffect(() => {
     if (stepIndex !== 3) {
       setStarted(false);
+      return;
     }
+    const timer = setTimeout(() => setStarted(true), 3000);
+    return () => clearTimeout(timer);
   }, [stepIndex]);
 
   // Only advanceStep() (via the "Continuer" button below) can leave this step — no backdrop/Escape dismissal.
@@ -200,13 +203,6 @@ export function TerrainModal() {
             </Modal.Body>
 
             <Modal.Footer className="w-full">
-              <div className="flex-1 flex justify-end">
-                {!started && (
-                  <Button variant="primary" onPress={() => setStarted(true)}>
-                    C'est parti
-                  </Button>
-                )}
-              </div>
               <div className="flex-1 flex justify-end">
                 {started && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
