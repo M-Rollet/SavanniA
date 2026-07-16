@@ -15,7 +15,7 @@ type Props = {
 
 const LAST_PAGE = 1;
 
-const TITLES = ['Notre IA est prête', 'Misison accomplie\u00A0!'];
+const TITLES = ['Notre IA est prête', 'Mission accomplie\u00A0!'];
 
 // Each dash is a real DOM pill (not a gradient) so it can actually have rounded corners — a
 // gradient's color stops are hard edges, there's no border-radius on a background-image.
