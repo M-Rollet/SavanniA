@@ -141,8 +141,8 @@ export function ReunionModal() {
                     L'arbre du labo a mal classé{' '}
                     <span className="font-semibold text-red-600">
                       {labMistakes} robot{labMistakes > 1 ? 's' : ''}
-                    </span>{' '}
-                    (en rouge) : sur le terrain, le robot a réagi différement qu'attendu. Ses questions ne
+                    </span>
+                    &nbsp;: sur le terrain, le robot a réagi différement qu'attendu. Ses questions ne
                     sont pas encore les bonnes. À toi de modifier l'arbre, ses questions et ses décisions pour améliorer sa précision — à chaque
                     changement, son score de robots bien classés évolue.
                   </>

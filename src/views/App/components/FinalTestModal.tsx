@@ -15,7 +15,7 @@ type Props = {
 
 const LAST_PAGE = 1;
 
-const TITLES = ['Notre IA est prête', 'Misison accomplie !'];
+const TITLES = ['Notre IA est prête', 'Misison accomplie\u00A0!'];
 
 // Each dash is a real DOM pill (not a gradient) so it can actually have rounded corners — a
 // gradient's color stops are hard edges, there's no border-radius on a background-image.
@@ -113,9 +113,9 @@ export function FinalTestModal({ reopenToken = 0 }: Props) {
                   >
                     <h2 className="text-4xl font-semibold text-gray-800">{TITLES[0]}</h2>
                     <p className="text-gray-600 text-base max-w-2xl text-justify">
-                      Ce que tu viens de construire n'est pas une boîte noire magique : c'est une suite de questions
+                      Ce que tu viens de construire n'est pas une boîte noire magique&nbsp;: c'est une suite de questions
                       oui/non que toi, puis l'algorithme, avez choisies — dans l'ordre qui trie le mieux tes robots.
-                      C'est ça, une intelligence artificielle : <span className="font-semibold">des règles, pas de la magie</span>.
+                      C'est ça, une intelligence artificielle&nbsp;: <span className="font-semibold">des règles, pas de la magie</span>.
                     </p>
                     <p className="text-gray-600 text-base max-w-2xl text-justify">
                       Active l'interrupteur ci-dessous pour <span className="font-semibold">connecter ton IA aux robots</span>, puis va voir sur le terrain
@@ -166,7 +166,7 @@ export function FinalTestModal({ reopenToken = 0 }: Props) {
                     <p className="text-gray-600 text-base max-w-2xl text-justify">
                       Notre objectif est atteint, les robots sont maintenant triés automatiquement au départ du circuit. Plus aucun risque de perdre des robots dans la nature.
                     </p>
-                    <p className="text-gray-600 text-base max-w-2xl w-full text-justify">Voici ce que tu as appris en cours de route :</p>
+                    <p className="text-gray-600 text-base max-w-2xl w-full text-justify">Voici ce que tu as appris en cours de route&nbsp;:</p>
                     <ul className="flex flex-col gap-2.5 max-w-2xl w-full text-left">
                       <li className="flex items-start gap-2.5 text-gray-600 text-base">
                         <CheckShape className="shrink-0 mt-0.5 text-green-600" width={16} height={16} />
@@ -177,7 +177,7 @@ export function FinalTestModal({ reopenToken = 0 }: Props) {
                       <li className="flex items-start gap-2.5 text-gray-600 text-base">
                         <CheckShape className="shrink-0 mt-0.5 text-green-600" width={16} height={16} />
                         <span>
-                          Comment fonctionne un arbre de décision : des questions posées dans le bon ordre, jusqu'au verdict.
+                          Comment fonctionne un arbre de décision&nbsp;: des questions posées dans le bon ordre, jusqu'au verdict.
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5 text-gray-600 text-base">

@@ -25,7 +25,7 @@ export function ExternalDataIntroModal() {
         <Modal.Container size="md">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>Toujours plus de données !</Modal.Heading>
+              <Modal.Heading>Toujours plus de données&nbsp;!</Modal.Heading>
             </Modal.Header>
 
             <Modal.Body className="flex flex-col gap-3">
@@ -80,13 +80,13 @@ export function ExternalDataReadyModal() {
         <Modal.Container size="md">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>Un paquet de données !</Modal.Heading>
+              <Modal.Heading>Un paquet de données&nbsp;!</Modal.Heading>
             </Modal.Header>
 
             <Modal.Body className="flex flex-col gap-3">
               <p className="text-gray-600 text-sm">
                 Il y a maintenant beaucoup plus de robots, arriveras-tu à modifier l'arbre pour qu'ils soient tous
-                triés correctement ?
+                triés correctement&nbsp;?
               </p>
             </Modal.Body>
 

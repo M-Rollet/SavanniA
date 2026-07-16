@@ -225,7 +225,7 @@ export function SettingsOverlay() {
                       <p className="text-sm font-medium text-gray-700">Robots configurés</p>
                       {stepIndex >= 1 && robotConfigs.length <= MIN_ROBOTS && (
                         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                          Attention : moins de {MIN_ROBOTS} robots réduit la richesse de l'activité.
+                          Attention&nbsp;: moins de {MIN_ROBOTS} robots réduit la richesse de l'activité.
                         </p>
                       )}
                       <div className="grid grid-cols-[16px_4rem_1fr_auto] items-center gap-x-3 gap-y-2">
@@ -272,7 +272,7 @@ export function SettingsOverlay() {
                       <>
                         <div className="flex items-center justify-between gap-4 w-full">
                           <p className="text-xs text-red-600 font-medium">
-                            Confirmer la réinitialisation ?<br />
+                            Confirmer la réinitialisation&nbsp;?<br />
                             Cette action est irréversible.
                           </p>
                           <div className="flex gap-2 shrink-0">

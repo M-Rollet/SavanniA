@@ -479,7 +479,7 @@ export const STEP_DEFS: StepDef[] = [
       heading: 'De nouveaux robots arrivent',
       body: [
         "Deux nouveaux robots rejoignent l'équipe. D'autres scientifiques ont déjà rentré leurs données dans le tableau.",
-        "Ta seule question : est-ce que ton arbre — celui que tu viens d'affiner — les classe correctement du premier coup ? Sinon, ajuste-le encore.",
+        "Ta seule question\u00A0: est-ce que ton arbre — celui que tu viens d'affiner — les classe correctement du premier coup\u00A0? Sinon, ajuste-le encore.",
       ],
     },
   },

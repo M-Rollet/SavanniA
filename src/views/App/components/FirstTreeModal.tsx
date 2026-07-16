@@ -26,7 +26,7 @@ export function FirstTreeModal({ isOpen, onConfirm }: Props) {
 
             <Modal.Body className="flex flex-col gap-4">
               <p className="text-gray-600 text-sm">
-                Que penses-tu de ce premier arbre ? Est-ce qu'il suffit pour trier les robots ? Est-ce qu'il y a assez de questions ?
+                Que penses-tu de ce premier arbre&nbsp;? Est-ce qu'il suffit pour trier les robots&nbsp;? Est-ce qu'il y a assez de questions&nbsp;?
               </p>
               <p className="text-gray-600 text-sm">
                 Maintenant, nous allons voir comment se comportent les robots sur le terrain.

@@ -334,10 +334,10 @@ export function DataTable() {
                       data-tour={cellTourAttr}
                       title={
                         isCorrected
-                          ? `Tu avais noté « ${formatValue(c, priorManualValue)} », le test mesure « ${formatValue(
+                          ? `Tu avais noté «\u00A0${formatValue(c, priorManualValue)}\u00A0», le test mesure «\u00A0${formatValue(
                               c,
                               value
-                            )} ».`
+                            )}\u00A0».`
                           : undefined
                       }
                       className={`relative text-gray-600 overflow-hidden ${editable ? 'p-0' : 'px-2 py-2'} ${

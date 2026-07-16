@@ -174,7 +174,7 @@ function QuestionNodePreview({
             transition={{ duration: 0.3 }}
             className="absolute -top-3 left-1/2 -translate-x-1/2 px-2.5 py-1 rounded-full text-xs font-bold shadow-sm z-20 whitespace-nowrap bg-amber-200 text-amber-900"
           >
-            Gini : {giniValue.toFixed(2)}
+            Gini&nbsp;: {giniValue.toFixed(2)}
           </motion.div>
         )}
         <div className="node-card rounded-xl bg-white shadow-sm border transition-all">
@@ -339,9 +339,9 @@ const P6_QB = {
 
 const HEADINGS = [
   'Trop de robots pour trier à la main',
-  'Bien ou mal trié ?',
+  'Bien ou mal trié\u00A0?',
   'Le meilleur tri',
-  'Trié ou mélangé ?',
+  'Trié ou mélangé\u00A0?',
   "Le lien avec l'arbre",
   'Une mesure du mélange',
   'Un dernier défi',
@@ -490,7 +490,7 @@ export function Step7IntroModal() {
                       <>
                         <p className="text-gray-600 text-sm">
                           Avec 6 robots, trier à la main restait possible. Mais une autre équipe vient d'en envoyer 30
-                          de plus — impossible de continuer au feeling ! Il nous faut une méthode qui marche à tous les
+                          de plus — impossible de continuer au feeling&nbsp;! Il nous faut une méthode qui marche à tous les
                           coups, quel que soit le nombre de robots. Découvrons comment un ordinateur s'y prend.
                         </p>
                         <div className="flex-1 flex items-center justify-center">
@@ -503,19 +503,19 @@ export function Step7IntroModal() {
                     {page === 1 && (
                       <>
                         <p className="text-gray-600 text-sm">
-                          Il nous faut un moyen pour évaluer si des robots sont bien triés ou non. Regarde ce groupe :
+                          Il nous faut un moyen pour évaluer si des robots sont bien triés ou non. Regarde ce groupe&nbsp;:
                           la ligne au milieu représente un partage en deux, comme si une règle avait envoyé chaque
                           robot à gauche ou à droite.
                         </p>
                         <ChoiceExercise
                           correct="medium"
-                          question="D'après toi, ce partage est-il :"
+                          question="D'après toi, ce partage est-il\u00A0:"
                           options={[
                             { id: 'very-bad', label: 'Très mal trié' },
                             { id: 'medium', label: 'Moyennement trié' },
                             { id: 'perfect', label: 'Parfaitement trié' },
                           ]}
-                          feedback="Bien vu ! Il reste quelques robots du mauvais côté, donc ce n'est pas parfait — mais la grande majorité est bien placée : c'est un bon partage."
+                          feedback="Bien vu\u00A0! Il reste quelques robots du mauvais côté, donc ce n'est pas parfait — mais la grande majorité est bien placée\u00A0: c'est un bon partage."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex justify-center">
@@ -533,11 +533,11 @@ export function Step7IntroModal() {
                           correct="B"
                           question={
                             <>
-                              D’après toi, quel partage est le plus réussi ?
+                              D’après toi, quel partage est le plus réussi&nbsp;?
                             </>
                           }
                           options={abEqualOptions('Partage A', 'Partage B', "Aussi triés l'un que l'autre")}
-                          feedback="C'est juste, les deux moitiés du partage B sont plus pures : les robots prêts à partir et ceux à réparer sont bien séparés."
+                          feedback="C'est juste, les deux moitiés du partage B sont plus pures\u00A0: les robots prêts à partir et ceux à réparer sont bien séparés."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-10 justify-center">
@@ -554,9 +554,9 @@ export function Step7IntroModal() {
                         <p className="text-gray-600 text-sm">Continuons avec cet autre exemple.</p>
                         <ChoiceExercise
                           correct="equal"
-                          question="D’après toi, quel partage est le plus réussi ?"
+                          question="D’après toi, quel partage est le plus réussi\u00A0?"
                           options={abEqualOptions('Partage A', 'Partage B', "Aussi triés l'un que l'autre")}
-                          feedback="Exactement ! Les deux partages ont la même répartition dans chaque moitié (5 contre 1) : seul l'ordre des robots change, pas la qualité du partage."
+                          feedback="Exactement\u00A0! Les deux partages ont la même répartition dans chaque moitié (5 contre 1)\u00A0: seul l'ordre des robots change, pas la qualité du partage."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-10 justify-center">
@@ -571,12 +571,12 @@ export function Step7IntroModal() {
                     {page === 4 && (
                       <>
                         <p className="text-gray-600 text-sm">
-                          Quand on construit un arbre de décision, chaque question sépare les robots en deux groupes :
+                          Quand on construit un arbre de décision, chaque question sépare les robots en deux groupes&nbsp;:
                           ceux qui répondent Oui, et ceux qui répondent Non.
                         </p>
                         <ChoiceExercise
                           correct="B"
-                          question="Laquelle de ces deux questions sépare le mieux les deux groupes ?"
+                          question="Laquelle de ces deux questions sépare le mieux les deux groupes\u00A0?"
                           options={abEqualOptions('Question A', 'Question B', "C'est la même chose")}
                           feedback="C'est juste. La question B sépare les robots en deux groupes plus purs que la question A. Ici on devrait choisir la question B pour construire le meilleur arbre."
                           onAnswered={() => setAnsweredThisPage(true)}
@@ -600,7 +600,7 @@ export function Step7IntroModal() {
                         </p>
                         <p className="text-gray-600 text-sm">
                           Pas besoin de connaître la formule — il suffit de savoir lire le résultat. Plus le score est
-                          bas, plus les groupes sont purs (c'est mieux !). Si le score est haut, les groupes sont
+                          bas, plus les groupes sont purs (c'est mieux&nbsp;!). Si le score est haut, les groupes sont
                           mélangés (c'est moins bien).
                         </p>
                         <div className="flex gap-8 justify-center py-10">
@@ -619,7 +619,7 @@ export function Step7IntroModal() {
                         </div>
                         <p className="text-gray-600 text-sm">
                           On peut voir que la question B a un score plus bas que la question A. Notre intuition était
-                          bonne !
+                          bonne&nbsp;!
                         </p>
                       </>
                     )}
@@ -629,14 +629,14 @@ export function Step7IntroModal() {
                     {page === QUIZ_PAGE && (
                       <>
                         <p className="text-gray-600 text-sm">
-                          Pour finir, un vrai défi : cette fois, les deux options se ressemblent énormément. Un seul
+                          Pour finir, un vrai défi&nbsp;: cette fois, les deux options se ressemblent énormément. Un seul
                           robot change de groupe entre les deux questions.
                         </p>
                         <ChoiceExercise
                           correct="B"
-                          question="En te basant sur le score de Gini, laquelle est la meilleure question ?"
+                          question="En te basant sur le score de Gini, laquelle est la meilleure question\u00A0?"
                           options={abEqualOptions('Question A', 'Question B', "C'est la même chose")}
-                          feedback="Bravo ! À l'œil, ces deux questions se valaient presque. Mais le score de Gini ne se trompe pas : la question B sépare un peu mieux les robots."
+                          feedback="Bravo\u00A0! À l'œil, ces deux questions se valaient presque. Mais le score de Gini ne se trompe pas\u00A0: la question B sépare un peu mieux les robots."
                           onAnswered={() => setAnsweredThisPage(true)}
                         >
                           <div className="flex gap-8 justify-center">

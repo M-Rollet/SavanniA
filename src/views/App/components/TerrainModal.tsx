@@ -57,32 +57,6 @@ export function TerrainModal() {
     [observationCheckFailed, robotConfigs, physicalRobotData]
   );
 
-  // Turns each mismatch into a sensor-specific explanation (not just "this is wrong") — the
-  // ground-truth config already tells us exactly which sensor caused the discrepancy.
-  const wrongMessages = useMemo(() => {
-    if (!wrongUuids || wrongUuids.size === 0) {
-      return [];
-    }
-    const lines: string[] = [];
-    robotConfigs.forEach(r => {
-      if (!wrongUuids.has(r.uuid)) {
-        return;
-      }
-      const profile = CORE_PROFILES[r.profileIndex];
-      const colorDef = ROBOT_COLORS.find(c => c.id === r.color);
-      if (!profile || !colorDef) {
-        return;
-      }
-      if (profile.expectedCategory === 'repair') {
-        const reasons = getFailureReasons(profile.config);
-        lines.push(`Robot ${colorDef.label} : ${reasons.join(' ')}`);
-      } else {
-        lines.push(`Robot ${colorDef.label} : tous ses capteurs sont bons — il peut vraiment partir.`);
-      }
-    });
-    return lines;
-  }, [wrongUuids, robotConfigs]);
-
   // Robots only appear once the user has read the explanation and pressed "C'est parti".
   const [started, setStarted] = useState(false);
   useEffect(() => {
@@ -147,7 +121,7 @@ export function TerrainModal() {
                 <img src={buttonImage} alt="" className="w-100 max-w-full rounded-xl mx-auto my-4" />
                 <p className="text-gray-600 text-sm">
                   Pour chaque robot, observe s'il revient à la base et note tes observations (comportement, bruit, etc).
-                  Indique si son statut devrait être « Prêt à partir » ou « À réparer » selon le résultat du test.
+                  Indique si son statut devrait être «&nbsp;Prêt à partir&nbsp;» ou «&nbsp;À réparer&nbsp;» selon le résultat du test.
                 </p>
               </div>
 
@@ -250,7 +224,7 @@ export function TerrainModal() {
         failed={observationCheckFailed}
         title="Les observations semblent incorrectes"
         messages={[
-          "Certains robots sont marqués « Prêt à partir » ou « À réparer » alors que ce n'est pas ce qui a été observé sur le terrain.",
+          "Certains robots sont marqués «\u00A0Prêt à partir\u00A0» ou «\u00A0À réparer\u00A0» alors que ce n'est pas ce qui a été observé sur le terrain.",
           "Si besoin, relance un robot sur le terrain et observe ce qu'il se passe.",
         ]}
       />

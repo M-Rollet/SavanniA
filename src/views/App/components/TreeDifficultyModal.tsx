@@ -84,7 +84,7 @@ export function TreeDifficultyModal() {
         <Modal.Container size="md">
           <Modal.Dialog>
             <Modal.Header>
-              <Modal.Heading>C'est difficile !</Modal.Heading>
+              <Modal.Heading>C'est difficile&nbsp;!</Modal.Heading>
             </Modal.Header>
 
             <Modal.Body className="flex flex-col gap-3">

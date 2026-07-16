@@ -31,8 +31,8 @@ const BRIEF_PAGES: BriefPage[] = [
   {
     heading: 'Ton rôle',
     body: [
-      'Bienvenue au laboratoire de SavannIA. Tu es scientifique : ton équipe envoie des robots explorer la savane pour observer la faune, sans jamais la déranger ni perdre de matériel sur le terrain.',
-      'Mais certains robots ne sont pas prêts : batterie faible, capteurs cassés, moteur qui peine. Les envoyer en mission serait risqué, pour eux comme pour les animaux.',
+      'Bienvenue au laboratoire de SavannIA. Tu es scientifique\u00A0: ton équipe envoie des robots explorer la savane pour observer la faune, sans jamais la déranger ni perdre de matériel sur le terrain.',
+      'Mais certains robots ne sont pas prêts\u00A0: batterie faible, capteurs cassés, moteur qui peine. Les envoyer en mission serait risqué, pour eux comme pour les animaux.',
     ],
     image: thymioCases,
   },
@@ -54,15 +54,15 @@ const BRIEF_PAGES: BriefPage[] = [
           </span>
         </span>
       </>,
-      'La mission se déroule en trois phases :',
+      'La mission se déroule en trois phases\u00A0:',
     ],
     phases: true,
   },
   {
     heading: 'Ce que tu vas apprendre',
     body: [
-      "Ce qu'est vraiment une intelligence artificielle : des règles, pas de la magie.",
-      "Comment fonctionne un arbre de décision : des questions posées dans le bon ordre, jusqu'au verdict.",
+      "Ce qu'est vraiment une intelligence artificielle\u00A0: des règles, pas de la magie.",
+      "Comment fonctionne un arbre de décision\u00A0: des questions posées dans le bon ordre, jusqu'au verdict.",
       "Pourquoi il faut parfois faire confiance à un capteur plus qu'à tes propres yeux.",
     ],
     list: true,

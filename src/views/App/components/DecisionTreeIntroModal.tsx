@@ -14,8 +14,8 @@ type Page = 0 | 1 | 2 | 3 | 4;
 const LAST_PAGE: Page = 4;
 
 const TITLES: Record<Page, string> = {
-  0: 'Comment as-tu choisi ?',
-  1: 'Et le programme, comment décide-t-il ?',
+  0: 'Comment as-tu choisi\u00A0?',
+  1: 'Et le programme, comment décide-t-il\u00A0?',
   2: 'Les arbres de décision',
   3: 'Les arbres de décision',
   4: 'Les arbres de décision',
@@ -67,10 +67,10 @@ export function DecisionTreeIntroModal() {
                     className="flex flex-col gap-4"
                   >
                     <p className="text-gray-600 text-sm">
-                      Pour chaque robot, tu as décidé « prêt à partir » ou « à réparer ». Mais comment, exactement ? Sur quels indices t'es-tu appuyé ?
+                      Pour chaque robot, tu as décidé «&nbsp;prêt à partir&nbsp;» ou «&nbsp;à réparer&nbsp;». Mais comment, exactement&nbsp;? Sur quels indices t'es-tu appuyé&nbsp;?
                     </p>
                     <p className="text-gray-600 text-sm">
-                      Peut-être plusieurs à la fois, un peu à l'instinct — et sans forcément suivre toujours la même règle. Serais-tu capable d'expliquer ta méthode à quelqu'un d'autre, mot pour mot ?
+                      Peut-être plusieurs à la fois, un peu à l'instinct — et sans forcément suivre toujours la même règle. Serais-tu capable d'expliquer ta méthode à quelqu'un d'autre, mot pour mot&nbsp;?
                     </p>
                   </motion.div>
                 ) : page === 1 ? (
@@ -83,14 +83,14 @@ export function DecisionTreeIntroModal() {
                     className="flex flex-col gap-4"
                   >
                     <p className="text-gray-600 text-sm">
-                      Le programme, lui, ne peut pas deviner. Il suit une liste de questions et prend sa décision selon les réponses. C'est ce qu'on appelle un <span className="font-semibold">arbre de décision</span>. Mais qu'est-ce que c'est exactement ?
+                      Le programme, lui, ne peut pas deviner. Il suit une liste de questions et prend sa décision selon les réponses. C'est ce qu'on appelle un <span className="font-semibold">arbre de décision</span>. Mais qu'est-ce que c'est exactement&nbsp;?
                     </p>
                     <p className="text-gray-600 text-sm">
                       Un arbre de décision, c'est une suite de questions, posées les unes après les autres. Selon les résultats, on suit un chemin différent dans l'arbre et on arrive à une conclusion.
                     </p>
                     <img src={tree1} alt="Arbre de décision" className="w-full h-auto rounded-lg" />
                     <p className="text-gray-600 text-sm">
-                      Mais pourquoi ça s'appelle un arbre ? Parce qu'il a la forme d'un arbre retourné !
+                      Mais pourquoi ça s'appelle un arbre&nbsp;? Parce qu'il a la forme d'un arbre retourné&nbsp;!
                     </p>
                   </motion.div>
                 ) : page === 2 ? (

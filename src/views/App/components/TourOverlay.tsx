@@ -134,21 +134,21 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   20: {
     target: '[data-testid="rf__node-root"]',
-    text: 'Voici le point de départ : le robot qui va être testé par le programme.',
+    text: 'Voici le point de départ\u00A0: le robot qui va être testé par le programme.',
     advanceOn: 'ok',
     chevronNav: true,
     back: 19,
   },
   21: {
     target: '[data-testid="rf__node-d1"]',
-    text: "Chaque question du programme ressemble à ceci : une seule question, et deux réponses possibles — Oui ou Non. C'est un noeud !",
+    text: "Chaque question du programme ressemble à ceci\u00A0: une seule question, et deux réponses possibles — Oui ou Non. C'est un noeud\u00A0!",
     advanceOn: 'ok',
     chevronNav: true,
     back: 20,
   },
   22: {
     target: '[data-testid="rf__edge-d1-yes-l1"]',
-    text: 'Si la réponse est « Oui », le programme suit cette branche.',
+    text: 'Si la réponse est «\u00A0Oui\u00A0», le programme suit cette branche.',
     advanceOn: 'ok',
     chevronNav: true,
     back: 21,
@@ -162,7 +162,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
     placement: 'top',
     text: (
       <>
-        Ici, plus de question : c'est une décision finale. Le robot est classé <StatusLabel ready />. C'est une feuille de l'arbre.
+        Ici, pas de question&nbsp;: c'est une décision finale. Le robot est classé <StatusLabel ready />. C'est une feuille de l'arbre.
       </>
     ),
     advanceOn: 'ok',
@@ -171,7 +171,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   24: {
     target: '[data-testid="rf__edge-d1-no-l2"]',
-    text: 'Si la réponse est « Non », le programme suit cette autre branche.',
+    text: 'Si la réponse est «\u00A0Non\u00A0», le programme suit cette autre branche.',
     advanceOn: 'ok',
     chevronNav: true,
     back: 23,
@@ -192,7 +192,7 @@ const TOUR_STEPS: Record<number, TourStepDef> = {
   },
   26: {
     target: '[data-tour="launch-test-button"]',
-    text: "À toi de jouer : clique sur « Lancer le test » pour voir le programme parcourir l'arbre en direct, question après question.",
+    text: "À toi de jouer\u00A0: clique sur «\u00A0Lancer le test\u00A0» pour voir le programme parcourir l'arbre en direct, question après question.",
     advanceOn: 'wait',
     chevronNav: true,
     back: 25,
@@ -555,13 +555,13 @@ export function TourOverlay() {
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_1}
-        text="Bien joué ! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant sur les autres cases de sa ligne dans le tableau."
+        text="Bien joué\u00A0! Continue maintenant à remplir les données de ce robot (capteurs de distance, bruit moteur, batterie) en cliquant sur les autres cases de sa ligne dans le tableau."
         onDismiss={() => setTourStep(TOUR_WAIT_ROW_COMPLETE)}
       />
 
       <TourInterludeModal
         isOpen={tourStep === TOUR_INTERLUDE_2}
-        text="Parfait ! Tu sais maintenant comment observer un robot et donner ton pronostic. Fais de même pour tous les autres robots avant de passer à l'étape suivante."
+        text="Parfait\u00A0! Tu sais maintenant comment observer un robot et donner ton pronostic. Fais de même pour tous les autres robots avant de passer à l'étape suivante."
         onDismiss={finishTour}
       />
 
