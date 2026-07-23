@@ -78,3 +78,24 @@ Follow the prompts to complete your commit message.
 ## Additional Configuration
 
 For further customization and advanced configurations, refer to the official Vite documentation at [https://vitejs.dev](https://vitejs.dev) and the React documentation at [https://reactjs.org](https://reactjs.org).
+
+## Attributions
+
+Icons by [bsd](https://www.flaticon.com/authors/bsd) from [Flaticon](https://www.flaticon.com/):
+
+- [Carnivore animal icons](https://www.flaticon.com/free-icons/carnivore-animal)
+- [Herbivore wildlife icons](https://www.flaticon.com/free-icons/herbivore-wildlife)
+- [Brinjal guinea squash icons](https://www.flaticon.com/free-icons/brinjal-guinea-squash)
+- [Fruit icons](https://www.flaticon.com/free-icons/fruit)
+- [Tropical icons](https://www.flaticon.com/free-icons/tropical)
+- [Carrot icons](https://www.flaticon.com/free-icons/carrot)
+- [Branch icons](https://www.flaticon.com/free-icons/branch)
+- [Oakleaf icons](https://www.flaticon.com/free-icons/oakleaf)
+- [Equipment icons](https://www.flaticon.com/free-icons/equipment)
+- [Graph icons](https://www.flaticon.com/free-icons/graph)
+- [Acer icons](https://www.flaticon.com/free-icons/acer)
+
+Other icons from:
+
+- [Gravity UI](https://gravity-ui.com/fr/icons)
+- [Font Awesome](https://fontawesome.com)
