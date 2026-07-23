@@ -300,15 +300,6 @@ export const PHASES: Phase[] = [
   },
 ];
 
-export function phaseForStep(index: number): Phase {
-  return PHASES.find(p => p.steps.includes(index)) ?? PHASES[0];
-}
-
-/** True for the first step of its phase — used to render the phase heading above it in the stepper. */
-export function isPhaseStart(index: number): boolean {
-  return PHASES.some(p => p.steps[0] === index);
-}
-
 export type StepFeatures = {
   /** Team switch modal (bureau/terrain) is available. */
   teamSwitch: boolean;

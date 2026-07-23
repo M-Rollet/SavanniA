@@ -84,7 +84,6 @@ type TourStepDef = {
   next?: number;
 };
 
-// Placeholder copy — refine later.
 const TOUR_STEPS: Record<number, TourStepDef> = {
   1: {
     target: '[data-tour="left-panel"]',

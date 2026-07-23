@@ -6,17 +6,6 @@ export abstract class InjectedInstance {
   abstract instance: unknown;
 }
 
-export interface Injection {
-  index: number;
-  key: string;
-  predicate?: Predicate;
-}
-
-export abstract class Inject {
-  abstract key: string;
-  abstract predicate?: Predicate;
-}
-
 export type Injectable = {
   key: string;
   name: string;
@@ -43,7 +32,3 @@ export abstract class LayerOption {
   abstract key: string;
   abstract predicate?: Predicate;
 }
-
-export type Args = {
-  [x: string]: unknown | (() => unknown);
-};

@@ -2,14 +2,12 @@
    in DecisionTree.tsx and inherited by all node children. */
 
 /* ── Opacity transition (shared) ─────────────────────────── */
-.node,
-.leaf-node {
+.node {
   transition: opacity 0.2s;
 }
 
 /* ── Handle defaults (shared) ────────────────────────────── */
 .node .react-flow__handle,
-.leaf-node .react-flow__handle,
 .root-node .react-flow__handle {
   background: #929292 !important; /* slate-300 */
   border: 2px solid white !important;
@@ -17,8 +15,7 @@
 
 /* ── Highlighted  ─────────────────────── */
 .root-node[data-highlighted] .node-card,
-.node[data-highlighted] .node-card,
-.leaf-node[data-highlighted] .node-card {
+.node[data-highlighted] .node-card {
   border-color: var(--robot-color); /* amber-400 */
   box-shadow: 0 0 0 3px var(--robot-color); /* amber-300 ring */
 }

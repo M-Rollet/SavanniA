@@ -1,6 +1,6 @@
-# ThymioIA React Application
+# SavannIA React Application
 
-This project is a React application that integrates with TensorFlow.js and Thymio robots for interactive AI learning and control. It uses Vite as a build tool for a fast development experience.
+This project is a React application that integrates with Thymio robots for interactive AI learning and control. The activity was developped as a Master thesis project in MOBOTS Lab at EPFL. It uses Vite as a build tool for a fast development experience.
 
 ## Prerequisites
 
@@ -16,8 +16,8 @@ To set up the project, follow these steps:
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/Mobsya/ThymioIA.git
-cd thymioia
+git clone https://github.com/M-Rollet/SavanniA.git
+cd SavanniA
 ```
 
 2. **Install dependencies:**
@@ -37,7 +37,7 @@ with Yarn:
 yarn dev
 ```
 
-This will start the Vite development server and you can view your application at `http://localhost:3000`.
+This will start the Vite development server and you can open your application with a browser.
 
 4. **Building for Production:**
 
@@ -78,8 +78,3 @@ Follow the prompts to complete your commit message.
 ## Additional Configuration
 
 For further customization and advanced configurations, refer to the official Vite documentation at [https://vitejs.dev](https://vitejs.dev) and the React documentation at [https://reactjs.org](https://reactjs.org).
-
-## Contributing
-
-Contributions to this project are welcome! Please refer to the contributing guidelines for more details.
-

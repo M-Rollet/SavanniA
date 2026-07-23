@@ -16,16 +16,6 @@ export class Container {
     ACTOR: new Map(),
   };
 
-  /** Returns the map of all currently instantiated singletons, keyed by role. */
-  static instantiatedSingleton = () => {
-    return this.instantiated;
-  };
-
-  /** Returns the map of all registered injectable constructors, keyed by role. */
-  static instantiates = () => {
-    return this.injectables;
-  };
-
   /** Registers an injectable constructor so it can later be resolved by role + key + predicate. */
   static addInjectable = (injectable: Injectable) => {
     const role = injectable.role;

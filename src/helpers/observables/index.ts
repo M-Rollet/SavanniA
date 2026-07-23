@@ -1,12 +1,5 @@
 /* eslint-disable dot-notation */
-import { IObjectDidChange, makeAutoObservable, observe, toJS } from 'mobx';
-
-export abstract class ObservableNotification<T> {
-  abstract key: string;
-  abstract type: string;
-  abstract payload: T;
-  abstract state: T;
-}
+import { makeAutoObservable } from 'mobx';
 
 export abstract class Observable<T> {
   abstract key: string;
@@ -25,21 +18,3 @@ export function createObservable<T>({ key, initialValue }: { key: string; initia
   });
   return observable;
 }
-
-/**
- * Subscribes to state changes on an Observable.
- * The callback receives an ObservableNotification on every MobX 'update' change.
- */
-export const subscribe = <T>(observable: Observable<T>, fun: (args: ObservableNotification<T>) => void) => {
-  observe(observable, (change: IObjectDidChange) => {
-    if (change.type === 'update') {
-      const newEvent: T = change?.newValue;
-      fun({
-        key: change.object['key'],
-        type: change.type,
-        payload: newEvent,
-        state: toJS(newEvent),
-      });
-    }
-  });
-};

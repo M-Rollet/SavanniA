@@ -1,4 +1,4 @@
-import type { Predicate } from './types.js';
+import type { Predicate } from './types';
 
 /** Returns true if two predicate arrays contain the same strings (order-independent). */
 export const samePredicate = (a: Predicate = [], b: Predicate = []): boolean => {

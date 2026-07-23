@@ -6,13 +6,6 @@ export type ThymioStatus = 'unknown' | 'connected' | 'available' | 'busy' | 'rea
  * @interfaces
  */
 
-export type ThymioNode = {
-  uuid: string;
-  name: string;
-  type: ThymioType;
-  status: ThymioStatus;
-};
-
 export interface Thymio {
   uuid: string;
   name: string;

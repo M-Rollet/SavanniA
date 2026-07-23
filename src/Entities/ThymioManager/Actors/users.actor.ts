@@ -10,7 +10,7 @@ export class AllUser implements Users {
   getRobotStatus: (uuid: string) => ThymioStatus | null;
   takeControl: Users['takeControl'];
   setVariables: Users['setVariables'];
-  emitEvent!: Users['emitEvent'];
+  emitEvent: Users['emitEvent'];
   identify: Users['identify'];
   release: Users['release'];
 

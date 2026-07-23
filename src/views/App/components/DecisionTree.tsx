@@ -320,16 +320,12 @@ const INITIAL_TREE: { nodes: Node[]; edges: Edge[] } = (() => {
     { id: 'root-out-d1', source: 'root', sourceHandle: 'out', target: 'd1' },
     { id: 'd1-yes-l1', source: 'd1', sourceHandle: 'yes', target: 'l1' }, // battery low → KO
     { id: 'd1-no-l2', source: 'd1', sourceHandle: 'no', target: 'l2' },
-    //{ id: 'd2-no-l2', source: 'd2', sourceHandle: 'no', target: 'l2' },
-    //{ id: 'd2-yes-l3', source: 'd2', sourceHandle: 'yes', target: 'l3' },
   ];
   const nodes: Node[] = [
     { id: 'root', type: 'root', position: { x: 0, y: 0 }, data: {} },
     { id: 'd1', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'light_working' } },
-    //{ id: 'd2', type: 'decision', position: { x: 0, y: 0 }, data: { questionId: 'ir_working' } },
     { id: 'l1', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
     { id: 'l2', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: false } },
-    //{ id: 'l3', type: 'leaf', position: { x: 0, y: 0 }, data: { decision: true } },
   ];
   return { nodes: layoutTree(nodes, edges), edges };
 })();

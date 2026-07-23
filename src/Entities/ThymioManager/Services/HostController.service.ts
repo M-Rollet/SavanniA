@@ -80,25 +80,18 @@ export class Thymio2DeviceManager implements TdmController {
    * Creates a ClientDeviceManager for each host, connects it to TDM,
    * and stores it in the `clients` observable.
    */
-  setClients = async (hosts: string[]) =>
-    new Promise((resolve, reject) => {
-      try {
-        this.hosts = hosts;
+  setClients = async (hosts: string[]) => {
+    this.hosts = hosts;
 
-        this.hosts.forEach(host => {
-          const client = Container.factoryFromInjectable<TdmClient>('SERVICE', 'ClientDeviceManager', ['thymio2'], {
-            host,
-          });
+    this.hosts.forEach(host => {
+      const client = Container.factoryFromInjectable<TdmClient>('SERVICE', 'ClientDeviceManager', ['thymio2'], {
+        host,
+      });
 
-          if (client) {
-            client.connectToTDM();
-            this.clients.set({ ...this.clients.state, [host]: client });
-          }
-        });
-
-        resolve(true);
-      } catch (error) {
-        reject(error);
+      if (client) {
+        client.connectToTDM();
+        this.clients.set({ ...this.clients.state, [host]: client });
       }
     });
+  };
 }

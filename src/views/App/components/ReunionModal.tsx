@@ -1,5 +1,5 @@
 import { Modal, useOverlayState, Button } from '@heroui/react';
-import { Person, Flask, Globe, CheckShape, Ban, Xmark } from '@gravity-ui/icons';
+import { Person, Flask, Globe, CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import { useLocalStorage } from '../../../helpers/useLocalStorage';
 import thymioRed from '../../../assets/thymio_icon_red.svg';

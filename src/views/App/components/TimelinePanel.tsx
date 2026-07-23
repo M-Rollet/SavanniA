@@ -133,7 +133,7 @@ export function TimelinePanel() {
       </div>
 
       {tourStep === TOUR_WAIT_ROW_COMPLETE && (
-        <p className="text-xs font-semibold text-gray-800"><Star /> Termine de remplir les données de ce robot.</p>
+        <p className="text-xs font-semibold text-gray-800">Termine de remplir les données de ce robot.</p>
       )}
 
       {!isLastStep && (

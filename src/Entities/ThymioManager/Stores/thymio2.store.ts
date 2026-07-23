@@ -47,12 +47,6 @@ const EVENT_CONFIRMATIONS: Partial<Record<string, (s: StatusSnapshot) => boolean
 
 @Store({ key: 'Thymio Store', predicate: ['thymio2', 'eventVariable'] })
 export class Thymio2EventVariable implements Thymio {
-  prox_horizontal = [0, 0, 0, 0, 0, 0, 0];
-  prox_ground_delta = [0, 0];
-  motor_left_speed = 0;
-  motor_right_speed = 0;
-  mic_norm = 0;
-
   uuid: string;
   type: ThymioType = 'thymio2';
   name: string;
@@ -63,7 +57,7 @@ export class Thymio2EventVariable implements Thymio {
   eventCallback: (vars: { [name: string]: number }) => void = () => {};
 
   private readyResolver: (() => void) | null = null;
-  private StatusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL, fieldMode: 0 };
+  private statusSnapshot: StatusSnapshot = { light: 0, seqType: SEQ_NULL, fieldMode: 0 };
   private pendingAck: { predicate: (s: StatusSnapshot) => boolean; resolve: (confirmed: boolean) => void } | null =
     null;
   // Last seqType seen on the status stream — used to detect the SEQ_NULL falling edge below.
@@ -275,8 +269,8 @@ export class Thymio2EventVariable implements Thymio {
         case 'status': {
           const arr = (value as number[]) ?? [];
           const newSeqType = arr[7] ?? 0;
-          this.StatusSnapshot = { light: arr[8] ?? 0, seqType: newSeqType, fieldMode: arr[9] ?? 0 };
-          if (this.pendingAck?.predicate(this.StatusSnapshot)) {
+          this.statusSnapshot = { light: arr[8] ?? 0, seqType: newSeqType, fieldMode: arr[9] ?? 0 };
+          if (this.pendingAck?.predicate(this.statusSnapshot)) {
             this.pendingAck.resolve(true);
           }
           // Fallback for a dropped `seq_done`: the firmware resets seq_type to SEQ_NULL in the

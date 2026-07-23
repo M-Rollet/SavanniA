@@ -4,7 +4,7 @@ import { Modal, useOverlayState, Button } from '@heroui/react';
 import { CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario, ROBOT_COLORS } from '../ScenarioContext';
 import { EMPTY_ROBOT_ENTRY, getStepDef } from '../steps/stepDefinitions';
-import { getWrongObservations, hasWrongObservations, getFailureReasons, CORE_PROFILES } from '../robotProfiles';
+import { getWrongObservations, hasWrongObservations } from '../robotProfiles';
 import { CheckFailedModal } from './CheckFailedModal';
 import './TreeNodes.css';
 import thymioRed from '../../../assets/thymio_icon_red.svg';

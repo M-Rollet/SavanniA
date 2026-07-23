@@ -571,7 +571,6 @@ export function SoftwareMain() {
             initVars.set('battery_level', [cfg.battery_level]);
           }
           await user.setVariables(uuid, initVars);
-          console.log('[SoftwareMain] emitting set_battery, cfg:', cfg, 'uuid:', uuid);
           if (cfg) {
             user.emitEvent(uuid, 'set_battery');
           }
@@ -685,7 +684,6 @@ export function SoftwareMain() {
         autoAnswerTimerRef.current = null;
       }
       seqAnsweredRef.current = false;
-      console.log('[SoftwareMain] handleActiveQuestion', questionId, 'robot:', controledRobot);
       if (!questionId || !controledRobot) {
         return;
       }
@@ -710,7 +708,7 @@ export function SoftwareMain() {
         user.emitEvent(controledRobot, seqEvent);
       }
 
-      // If the robot doesn't emit seq_done within 6 s, surface an error and stop the test.
+      // If the robot doesn't emit seq_done within SEQ_TIMEOUT_MS, surface an error and stop the test.
       autoAnswerTimerRef.current = setTimeout(() => {
         autoAnswerTimerRef.current = null;
         if (!testingRef.current) {
