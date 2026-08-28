@@ -1,0 +1,536 @@
+diff --git a/index.html b/index.html
+index 2a38934..19e6a45 100644
+--- a/index.html
++++ b/index.html
+@@ -4,6 +4,15 @@
+     <meta charset="UTF-8" />
+     <link rel="icon" type="image/png" href="/favicon.png" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <link rel="preconnect" href="https://fonts.googleapis.com" />
++    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
++    <!-- Source Serif 4: a text-optimized editorial serif (not a display/drama face) for the
++         teacher guide page — that page is a document meant to be read and printed, not a UI
++         screen, so it gets its own register instead of the app's Inter throughout. -->
++    <link
++      href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap"
++      rel="stylesheet"
++    />
+     <title>SavannIA</title>
+   </head>
+   <body>
+diff --git a/package.json b/package.json
+index ca67617..7c80b73 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,7 @@
+     "@gravity-ui/icons": "^2.18.0",
+     "@heroui/react": "^3.1.0",
+     "@mobsya-association/thymio-api": "^0.11.1",
+-"@xstate/react": "^4.1.0",
++    "@xstate/react": "^4.1.0",
+     "@xyflow/react": "^12.10.2",
+     "framer-motion": "^12.40.0",
+     "jotai": "^2.7.0",
+@@ -27,7 +27,8 @@
+     "react-dom": "19",
+     "react-grid-layout": "^1.4.4",
+     "tslib": "^2.6.2",
+-    "xstate": "^5.9.1"
++    "xstate": "^5.9.1",
++    "react-router-dom": "^7.1.1"
+   },
+   "devDependencies": {
+     "@babel/core": "^7.21.4",
+diff --git a/src/main.tsx b/src/main.tsx
+index 8be5c70..97ee72d 100644
+--- a/src/main.tsx
++++ b/src/main.tsx
+@@ -1,6 +1,8 @@
+ import React from 'react';
+ import ReactDOM from 'react-dom/client';
++import { HashRouter, Routes, Route } from 'react-router-dom';
+ import App from './views/App/App.tsx';
++import { TeacherPage } from './views/Teacher/TeacherPage.tsx';
+ import './views/global-styles/index.css';
+ 
+ // @heroui/react's toast queue wraps every update in document.startViewTransition(), which the
+@@ -33,6 +35,16 @@ window.addEventListener('error', event => {
+ 
+ ReactDOM.createRoot(document.getElementById('root')!).render(
+   <React.StrictMode>
+-    <App />
++    {/* HashRouter (not BrowserRouter): vite.config.mts uses a relative `base: './'`, which implies
++        the build can be served from any subpath without a fixed server rewrite rule. Hash-based
++        routes (/#/enseignants) work on any static host with no server config, whereas a clean
++        /enseignants URL would 404 on refresh unless the host is configured to fall back to
++        index.html for unknown paths. */}
++    <HashRouter>
++      <Routes>
++        <Route path="/" element={<App />} />
++        <Route path="/enseignants" element={<TeacherPage />} />
++      </Routes>
++    </HashRouter>
+   </React.StrictMode>
+ );
+diff --git a/src/views/App/steps/Welcome.tsx b/src/views/App/steps/Welcome.tsx
+index 2309678..581bec1 100644
+--- a/src/views/App/steps/Welcome.tsx
++++ b/src/views/App/steps/Welcome.tsx
+@@ -1,5 +1,6 @@
+ import { useState, type ReactNode } from 'react';
+ import { motion, AnimatePresence } from 'framer-motion';
++import { Link } from 'react-router-dom';
+ import { Button } from '@heroui/react';
+ import { ArrowRight, ArrowLeft, Gear, CheckShape, Ban } from '@gravity-ui/icons';
+ import { useScenario } from '../ScenarioContext';
+@@ -137,6 +138,9 @@ export function Welcome() {
+                   commencer.
+                 </p>
+               )}
++              <Link to="/enseignants" className="text-black/60 text-sm mt-5 underline hover:text-black/80">
++                Guide de l'enseignant·e
++              </Link>
+             </motion.div>
+           )}
+ 
+diff --git a/src/views/Teacher/TeacherPage.tsx b/src/views/Teacher/TeacherPage.tsx
+new file mode 100644
+index 0000000..6294dd2
+--- /dev/null
++++ b/src/views/Teacher/TeacherPage.tsx
+@@ -0,0 +1,371 @@
++import { useEffect, useState, type ReactNode } from 'react';
++import { Link } from 'react-router-dom';
++import { Button } from '@heroui/react';
++import { ArrowLeft, ArrowRight } from '@gravity-ui/icons';
++import { STEP_DEFS, PHASES } from '../App/steps/stepDefinitions';
++import logo from '../../assets/logo.svg';
++import missionMap from '../../assets/step_8.png';
++
++// Uncomment once the video file has been added under src/assets/teacher/:
++// import guideVideo from '../../assets/teacher/guide-video.mp4';
++
++/**
++ * Facilitator tips per step, drawn from the pilot study reported in the thesis (§6.2-§6.5),
++ * not from the app's own on-screen text (STEP_DEFS.objective / .action cover that; imported
++ * above so this page can never drift out of sync with what students actually see).
++ */
++const FACILITATOR_TIPS: Record<number, string> = {
++  1: "Étape la plus longue (5–12 min) : laisser le temps du raisonnement, ne pas accélérer. Les élèves manipulent le robot Thymio réel — couvrir le capteur de lumière, passer la main devant les capteurs de distance, écouter le bruit du moteur, lire le niveau de batterie. Le schéma affiché à l'écran indique quoi tester sur le robot, il ne remplace pas le test lui-même.",
++  2: "Le rejet unanime et rapide de l'arbre est attendu — c'est un signe positif, pas un problème.",
++  3: "Les robots roulent réellement sur le circuit physique ; l'application enregistre ce qui se passe, elle ne le simule pas. L'écran de bilan (prédiction / arbre / résultat côte à côte) est le moment clé : laisser le temps de repérer les désaccords.",
++  4: "Si un·e élève teste toutes les questions au hasard plutôt que de raisonner à partir du terrain, une courte relance suffit généralement à recentrer.",
++  5: "Certain·e·s élèves font confiance au tableau de données, d'autres veulent tester sur le circuit pour y croire — les deux chemins sont valables. Si un·e élève semble perdu·e, le rediriger vers le tableau.",
++  6: "Important : laisser la difficulté s'installer plusieurs minutes avant d'intervenir. C'est ce blocage qui donne du sens à la construction automatique introduite ensuite.",
++  7: 'Le format des quiz de comparaison n\'est pas intuitif au premier abord pour une partie des élèves — prévoir un temps de flottement avant que cela ne devienne clair. Rappeler au besoin que "plus petit = meilleur".',
++  8: 'Certain·e·s élèves (souvent les plus jeunes) peuvent croire que le logiciel a construit l\'arbre "tout seul" — c\'est précisément ce que la discussion de clôture doit corriger explicitement.',
++};
++
++type NavItem = { id: string; label: string };
++const NAV_ITEMS: NavItem[] = [
++  { id: 'presentation', label: "Présentation" },
++  { id: 'video', label: 'Vidéo' },
++  { id: 'materiel', label: 'Matériel & installation' },
++  { id: 'introduction', label: 'Introduction en classe' },
++  { id: 'deroulement', label: 'Déroulement pas à pas' },
++  { id: 'cloture', label: 'Discussion de clôture' },
++  { id: 'vigilance', label: 'Points de vigilance' },
++  { id: 'plus-loin', label: 'Pour aller plus loin' },
++];
++
++/** Section wrapper: a numbered eyebrow + serif heading, not a floating card — this page reads
++ * as a document with a spine (the section numbers are meaningful here: setup, then classroom
++ * intro, then the actual 8-step walkthrough, then closing — a real sequence a teacher follows
++ * top to bottom), not as stacked app panels. */
++function Section({
++  id,
++  index,
++  title,
++  children,
++}: {
++  id: string;
++  index: string;
++  title: string;
++  children: ReactNode;
++}) {
++  return (
++    <section id={id} className="scroll-mt-24 py-10 border-t border-black/10 first:border-t-0 first:pt-0">
++      <div className="flex items-baseline gap-3 mb-5">
++        <span className="font-report text-sm tracking-widest text-[var(--color-green)]">{index}</span>
++        <h2 className="font-report text-2xl font-semibold text-[var(--color-green-dark)]">{title}</h2>
++      </div>
++      <div className="flex flex-col gap-4 text-gray-700 leading-relaxed max-w-[62ch]">{children}</div>
++    </section>
++  );
++}
++
++function Bullet({ children }: { children: ReactNode }) {
++  return (
++    <li className="flex items-start gap-2.5">
++      <span className="mt-2 w-1.5 h-1.5 rounded-full bg-[var(--color-green)] shrink-0" />
++      <span>{children}</span>
++    </li>
++  );
++}
++
++function MetaPill({ children }: { children: ReactNode }) {
++  return (
++    <span className="inline-flex items-center rounded-full bg-white/70 border border-[var(--color-green-light)] px-3 py-1 text-xs font-medium text-[var(--color-green-dark)]">
++      {children}
++    </span>
++  );
++}
++
++export function TeacherPage() {
++  const [activeId, setActiveId] = useState<string>(NAV_ITEMS[0].id);
++
++  useEffect(() => {
++    document.title = "Guide de l'enseignant·e — SavannIA";
++    return () => {
++      document.title = 'SavannIA';
++    };
++  }, []);
++
++  useEffect(() => {
++    const observer = new IntersectionObserver(
++      entries => {
++        const visible = entries
++          .filter(e => e.isIntersecting)
++          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
++        if (visible[0]) {
++          setActiveId(visible[0].target.id);
++        }
++      },
++      { rootMargin: '-15% 0px -70% 0px', threshold: 0 }
++    );
++    NAV_ITEMS.forEach(({ id }) => {
++      const el = document.getElementById(id);
++      if (el) {
++        observer.observe(el);
++      }
++    });
++    return () => observer.disconnect();
++  }, []);
++
++  const scrollTo = (id: string) => {
++    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
++  };
++
++  return (
++    <div className="min-h-screen w-full" style={{ backgroundColor: 'var(--color-beige-light)' }}>
++      {/* Sticky top bar — print:hidden, this is navigation chrome, not document content */}
++      <header className="print:hidden sticky top-0 z-20 backdrop-blur bg-[var(--color-beige-light)]/85 border-b border-black/10">
++        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
++          <img src={logo} alt="SAVANNiA" className="h-7 w-auto" />
++          <Link to="/">
++            <Button variant="ghost" size="sm">
++              <ArrowLeft width={14} height={14} />
++              Retour à l'activité
++            </Button>
++          </Link>
++        </div>
++      </header>
++
++      {/* Hero */}
++      <div
++        className="border-b border-black/10"
++        style={{ background: 'linear-gradient(180deg, rgba(124,182,143,0.16), transparent)' }}
++      >
++        <div className="max-w-5xl mx-auto px-6 pt-14 pb-10">
++          <p className="font-report text-sm tracking-widest text-[var(--color-green)] mb-3">
++            GUIDE DE L'ENSEIGNANT·E
++          </p>
++          <h1 className="font-report text-4xl md:text-5xl font-semibold text-[var(--color-green-dark)] leading-tight max-w-[18ch]">
++            Construire un arbre de décision avec un robot Thymio
++          </h1>
++          <p className="text-gray-600 mt-4 max-w-[52ch]">
++            De quoi préparer, animer et clore la séance SavannIA en classe — matériel, déroulement
++            détaillé étape par étape, et questions de discussion tirées du pilote de recherche.
++          </p>
++          <div className="flex flex-wrap gap-2 mt-6">
++            <MetaPill>Cycle 3 · 12–15 ans</MetaPill>
++            <MetaPill>≈ 1h + intro & clôture</MetaPill>
++            <MetaPill>Robot Thymio + circuit physique</MetaPill>
++          </div>
++        </div>
++      </div>
++
++      {/* Body: sticky side nav + content */}
++      <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-[200px_1fr] gap-10">
++        <nav className="print:hidden hidden lg:block sticky top-24 self-start">
++          <ul className="flex flex-col gap-1 border-l border-black/10">
++            {NAV_ITEMS.map(item => (
++              <li key={item.id}>
++                <button
++                  onClick={() => scrollTo(item.id)}
++                  className={`w-full text-left text-sm pl-4 pr-2 py-1.5 -ml-px border-l-2 transition-colors ${
++                    activeId === item.id
++                      ? 'border-[var(--color-green)] text-[var(--color-green-dark)] font-medium'
++                      : 'border-transparent text-gray-500 hover:text-gray-800'
++                  }`}
++                >
++                  {item.label}
++                </button>
++              </li>
++            ))}
++          </ul>
++        </nav>
++
++        {/* Mobile nav: horizontal scroll strip, same items */}
++        <nav className="print:hidden lg:hidden -mx-6 px-6 overflow-x-auto">
++          <ul className="flex gap-2 pb-1 w-max">
++            {NAV_ITEMS.map(item => (
++              <li key={item.id}>
++                <button
++                  onClick={() => scrollTo(item.id)}
++                  className={`whitespace-nowrap text-xs rounded-full px-3 py-1.5 border ${
++                    activeId === item.id
++                      ? 'bg-[var(--color-green-dark)] text-white border-[var(--color-green-dark)]'
++                      : 'border-black/15 text-gray-600'
++                  }`}
++                >
++                  {item.label}
++                </button>
++              </li>
++            ))}
++          </ul>
++        </nav>
++
++        <main className="min-w-0">
++          <Section id="presentation" index="01" title="Présentation de l'activité">
++            <p>
++              Cette activité fait construire aux élèves, de bout en bout, le fonctionnement d'un système
++              d'intelligence artificielle&nbsp;: à partir de mesures brutes prises sur un robot Thymio, ils
++              construisent eux-mêmes un arbre de décision, le testent sur un circuit physique, le corrigent
++              lorsqu'il échoue, puis découvrent une méthode automatique pour le construire — sans qu'aucune
++              étape ne reste une boîte noire.
++            </p>
++          </Section>
++
++          <Section id="video" index="02" title="Vidéo de présentation">
++            {/* Replace this placeholder once the video asset is added under src/assets/teacher/ */}
++            <div className="aspect-video w-full max-w-[62ch] rounded-xl bg-white border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-sm">
++              Vidéo à venir
++            </div>
++            {/* <video controls className="w-full max-w-[62ch] rounded-xl" src={guideVideo} /> */}
++          </Section>
++
++          <Section id="materiel" index="03" title="Matériel et installation">
++            <h3 className="font-semibold text-gray-800">Matériel nécessaire (par groupe)</h3>
++            <ul className="flex flex-col gap-2">
++              <Bullet>1 ordinateur avec navigateur web + ThymioSuite installé localement</Bullet>
++              <Bullet>4 à 6 robots Thymio, chacun avec sa clé USB Bluetooth</Bullet>
++              <Bullet>
++                Circuit&nbsp;: carton (tunnel, pente), figurines ou images d'animaux (obstacle), surface
++                blanche, papier coloré, ruban adhésif noir (ligne à suivre)
++              </Bullet>
++            </ul>
++            <h3 className="font-semibold text-gray-800 mt-2">Installation avant la séance</h3>
++            <ol className="flex flex-col gap-1.5 list-decimal list-inside">
++              <li>Allumer les robots</li>
++              <li>Identifier chaque robot dans les réglages de l'application</li>
++              <li>Assigner à chaque robot la couleur utilisée pour l'identifier durant l'activité</li>
++            </ol>
++            <h3 className="font-semibold text-gray-800 mt-2">Taille des groupes</h3>
++            <p>
++              L'activité a été testée avec un ou deux élèves par poste. Pour une classe complète&nbsp;: des
++              ateliers parallèles (plusieurs postes en même temps) ou une rotation (groupes plus grands sur un
++              nombre réduit de postes).
++            </p>
++          </Section>
++
++          <Section id="introduction" index="04" title="Introduction à mener en classe">
++            <p className="text-sm text-gray-500">
++              Ces questions sont celles effectivement posées aux participant·e·s du pilote, avant l'activité
++              — elles peuvent servir telles quelles pour ouvrir la discussion en classe.
++            </p>
++            <ul className="flex flex-col gap-1.5">
++              <Bullet>« Sais-tu ce qu'est l'IA&nbsp;? »</Bullet>
++              <Bullet>« Comment perçois-tu l'IA&nbsp;? »</Bullet>
++              <Bullet>« Comment penses-tu qu'une IA devient intelligente&nbsp;? »</Bullet>
++            </ul>
++          </Section>
++
++          <Section id="deroulement" index="05" title="Déroulement pas à pas">
++            <img
++              src={missionMap}
++              alt="Carte de la mission : les huit étapes réparties sur les trois phases Labo, Terrain, et Bilan & optimisation"
++              className="w-full max-w-[62ch] rounded-xl border border-black/10"
++            />
++            {PHASES.map(phase => (
++              <div key={phase.id} className="mb-2">
++                <div className={`flex items-center gap-3 rounded-xl px-4 py-2.5 mb-3 ${phase.accentBgSoft}`}>
++                  <img src={phase.icon} alt="" className="w-9 h-9 shrink-0 object-contain" />
++                  <div className="flex flex-col">
++                    <span className={`text-sm font-semibold ${phase.accentText}`}>{phase.label}</span>
++                    <span className="text-xs text-gray-500">{phase.blurb}</span>
++                  </div>
++                </div>
++                <div className={`flex flex-col gap-4 mb-4 pl-4 border-l-2 ${phase.accentBorder}`}>
++                  {phase.steps.map(stepIndex => {
++                    const step = STEP_DEFS[stepIndex - 1];
++                    return (
++                      <div key={stepIndex} className="bg-white border border-gray-200 rounded-xl p-4">
++                        <p className="font-semibold text-gray-800 mb-1.5">
++                          Étape {stepIndex} — {step.label}
++                        </p>
++                        <p className="text-sm">
++                          <span className="font-medium">Objectif —</span> {step.objective}
++                        </p>
++                        <p className="text-sm">
++                          <span className="font-medium">Action —</span> {step.action}
++                        </p>
++                        {FACILITATOR_TIPS[stepIndex] && (
++                          <p className="text-sm italic text-gray-500 mt-2">{FACILITATOR_TIPS[stepIndex]}</p>
++                        )}
++                      </div>
++                    );
++                  })}
++                </div>
++              </div>
++            ))}
++            <p className="text-sm text-gray-500 italic">
++              Répartition du temps observée en pilote&nbsp;: les étapes 1, 3 et 6 sont les plus longues
++              (jusqu'à 10–13 min)&nbsp;; les étapes 2 et 4 sont les plus rapides (1–5 min). Prévoir la marge de
++              temps en conséquence plutôt que de répartir le temps également entre les étapes.
++            </p>
++          </Section>
++
++          <Section id="cloture" index="06" title="Discussion de clôture">
++            <p>
++              Ce moment est essentiel&nbsp;: il permet de rendre explicite ce que les élèves viennent de
++              faire, en particulier pour celles et ceux qui pourraient encore croire que « le logiciel a tout
++              fait » (voir étape 8). L'application elle-même affiche, à la toute fin, le message suivant, qui
++              peut servir de point de départ direct à la discussion&nbsp;:
++            </p>
++            <blockquote className="border-l-4 border-[var(--color-green-light)] pl-4 italic text-gray-600">
++              « Ce que tu viens de construire n'est pas une boîte noire magique&nbsp;: c'est une suite de
++              questions oui/non que toi, puis l'algorithme, avez choisies — dans l'ordre qui trie le mieux tes
++              robots. C'est ça, une intelligence artificielle&nbsp;: des règles, pas de la magie. »
++            </blockquote>
++            <p className="text-sm text-gray-500 mt-2">
++              Les questions ci-dessous sont, comme en section 4, celles effectivement posées aux
++              participant·e·s du pilote — ici dans la version après activité.
++            </p>
++            <ul className="flex flex-col gap-1.5">
++              <Bullet>« À quel point une IA est-elle intelligente&nbsp;? »</Bullet>
++              <Bullet>« Qu'as-tu appris sur la façon dont une machine apprend&nbsp;? »</Bullet>
++              <Bullet>« Qu'est-ce qui compte lorsqu'on construit une IA&nbsp;? »</Bullet>
++              <Bullet>« Une IA est-elle indépendante&nbsp;? »</Bullet>
++              <Bullet>« Qu'as-tu aimé ou moins aimé dans l'activité&nbsp;? »</Bullet>
++            </ul>
++          </Section>
++
++          <Section id="vigilance" index="07" title="Points de vigilance">
++            <ul className="flex flex-col gap-1.5">
++              <Bullet>
++                Densité de texte&nbsp;: pour les lecteurs plus jeunes ou hésitants, lire les consignes clés à
++                voix haute plutôt que de laisser l'élève les découvrir seul·e.
++              </Bullet>
++              <Bullet>
++                Guidage&nbsp;: certain·e·s élèves peuvent hésiter sur où cliquer — prévoir de circuler
++                activement, en particulier aux étapes 3 et 5.
++              </Bullet>
++              <Bullet>
++                Étape 6&nbsp;: ne pas intervenir trop tôt. Le blocage face au grand jeu de données est
++                volontaire et pédagogiquement productif.
++              </Bullet>
++              <Bullet>
++                Étape 8&nbsp;: vérifier explicitement, en fin d'activité, que chaque élève comprend avoir
++                construit le modèle lui-même/elle-même.
++              </Bullet>
++            </ul>
++          </Section>
++
++          <Section id="plus-loin" index="08" title="Pour aller plus loin (optionnel)">
++            <ul className="flex flex-col gap-1.5">
++              <Bullet>
++                Pour les groupes qui terminent en avance&nbsp;: proposer un critère de classification
++                supplémentaire ou un second jeu de données à explorer librement.
++              </Bullet>
++              <Bullet>
++                Pour prolonger la discussion de clôture&nbsp;: relier l'activité à un exemple d'IA que la
++                classe connaît déjà (recommandation de contenu, correction orthographique, etc.) et identifier
++                ensemble quelles données elle a dû utiliser.
++              </Bullet>
++            </ul>
++          </Section>
++
++          <footer className="print:hidden pt-10 pb-16 flex flex-col items-center text-center gap-4">
++            <p className="text-sm text-gray-500">Prêt·e à lancer la mission avec la classe&nbsp;?</p>
++            <Link to="/">
++              <Button variant="primary">
++                Retour à l'activité
++                <ArrowRight />
++              </Button>
++            </Link>
++          </footer>
++        </main>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/views/global-styles/index.css b/src/views/global-styles/index.css
+index 48c6852..5c703b6 100644
+--- a/src/views/global-styles/index.css
++++ b/src/views/global-styles/index.css
+@@ -15,3 +15,9 @@ body {
+   min-width: 320px;
+   min-height: 100vh;
+ }
++
++/* Editorial serif reserved for the teacher guide page (see index.html font link) — deliberately
++   scoped, not applied via :root, so the rest of the app keeps its own Inter-only voice. */
++.font-report {
++  font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif;
++}
+diff --git a/yarn.lock b/yarn.lock
+index bb7d9e6..210b48f 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -4550,6 +4550,11 @@ convert-source-map@^2.0.0:
+   resolved "https://registry.yarnpkg.com/convert-source-map/-/convert-source-map-2.0.0.tgz#4b560f649fc4e918dd0ab75cf4961e8bc882d82a"
+   integrity sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==
+ 
++cookie@^1.0.1:
++  version "1.1.1"
++  resolved "https://registry.yarnpkg.com/cookie/-/cookie-1.1.1.tgz#3bb9bdfc82369db9c2f69c93c9c3ceb310c88b3c"
++  integrity sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==
++
+ core-js-compat@^3.31.0, core-js-compat@^3.34.0:
+   version "3.36.0"
+   resolved "https://registry.yarnpkg.com/core-js-compat/-/core-js-compat-3.36.0.tgz#087679119bc2fdbdefad0d45d8e5d307d45ba190"
+@@ -8416,6 +8421,21 @@ react-resizable@^3.0.5:
+     prop-types "15.x"
+     react-draggable "^4.0.3"
+ 
++react-router-dom@^7.1.1:
++  version "7.18.2"
++  resolved "https://registry.yarnpkg.com/react-router-dom/-/react-router-dom-7.18.2.tgz#00bf1d0ce8bf17a6d831949aacda72a6120e4926"
++  integrity sha512-AIKJ/jgGlFb3EbfCXk5Gzshiwt+l3mqbCrNjmEWMMjqQxNJ3svBa6bgzFyCC2Sw3RA0VWF1kg3uQf2OFhxb8hw==
++  dependencies:
++    react-router "7.18.2"
++
++react-router@7.18.2:
++  version "7.18.2"
++  resolved "https://registry.yarnpkg.com/react-router/-/react-router-7.18.2.tgz#a76c46ce9e5edacd4f51289d5a71f71305db9152"
++  integrity sha512-aUVMjFm3GAPTTZL7oYr5E7ETiqfQCHRLH+B+5afnICvf0r7kkK4eR6SMuwbSTJw/7t+12khT/Kahij49fqOCIg==
++  dependencies:
++    cookie "^1.0.1"
++    set-cookie-parser "^2.6.0"
++
+ react-stately@3.46.0:
+   version "3.46.0"
+   resolved "https://registry.yarnpkg.com/react-stately/-/react-stately-3.46.0.tgz#9ce293b765c246c398a1765d6290acd0a77caa49"
+@@ -8841,6 +8861,11 @@ semver@^6.0.0, semver@^6.3.0, semver@^6.3.1:
+   resolved "https://registry.yarnpkg.com/semver/-/semver-6.3.1.tgz#556d2ef8689146e46dcea4bfdd095f3434dffcb4"
+   integrity sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==
+ 
++set-cookie-parser@^2.6.0:
++  version "2.7.2"
++  resolved "https://registry.yarnpkg.com/set-cookie-parser/-/set-cookie-parser-2.7.2.tgz#ccd08673a9ae5d2e44ea2a2de25089e67c7edf68"
++  integrity sha512-oeM1lpU/UvhTxw+g3cIfxXHyJRc/uidd3yK1P242gzHds0udQBYzs3y8j4gCCW+ZJ7ad0yctld8RYO+bdurlvw==
++
+ set-function-length@^1.2.1:
+   version "1.2.1"
+   resolved "https://registry.yarnpkg.com/set-function-length/-/set-function-length-1.2.1.tgz#47cc5945f2c771e2cf261c6737cf9684a2a5e425"
