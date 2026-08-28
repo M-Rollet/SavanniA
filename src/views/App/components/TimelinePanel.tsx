@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
-import { ArrowRight, Check, Star, Play } from '@gravity-ui/icons';
+import { ArrowRight, Check, Star, Play, ChevronDown, ChevronUp } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
-import { STEP_DEFS, getStepDef } from '../steps/stepDefinitions';
+import { STEP_DEFS, PHASES, getStepDef } from '../steps/stepDefinitions';
 import { hasWrongCriteria } from '../robotProfiles';
 import { TOUR_WAIT_ROW_COMPLETE } from './TourOverlay';
 import { FirstTreeModal } from './FirstTreeModal';
@@ -27,6 +27,32 @@ const STEP_IMAGES: Record<number, string> = {
   8: step8,
 };
 
+const phaseOfStep = (stepIndex: number) => PHASES.find(p => p.steps.includes(stepIndex))!;
+
+/** Compact horizontal progress rail — replaces showing the full illustrated mission map on every
+ * single step. The map's only information that actually changes step-to-step is "which node is
+ * lit", so a small dot row carries that at a fraction of the size; the full map (still useful for
+ * the "journey so far" framing) is one tap away instead of a fixture. */
+function ProgressRail({ stepIndex }: { stepIndex: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {STEP_DEFS.map(s => {
+        const phase = phaseOfStep(s.index);
+        const state = s.index < stepIndex ? 'done' : s.index === stepIndex ? 'current' : 'todo';
+        return (
+          <div
+            key={s.index}
+            title={s.label}
+            className={`h-1.5 flex-1 rounded-full transition-all ${
+              state === 'todo' ? 'bg-gray-200' : `${phase.accentBg} ${state === 'done' ? 'opacity-60' : ''}`
+            } ${state === 'current' ? 'ring-2 ring-offset-1 ring-[var(--color-rpi-navy)]' : ''}`}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function TimelinePanel() {
   const {
     stepIndex,
@@ -44,6 +70,7 @@ export function TimelinePanel() {
     algorithmBuildActive,
   } = useScenario();
   const current = getStepDef(stepIndex);
+  const phase = phaseOfStep(stepIndex);
   const canAdvance = current.canAdvance({
     physicalRobotData,
     robotConfigs,
@@ -54,6 +81,8 @@ export function TimelinePanel() {
   });
   const isLastStep = stepIndex >= STEP_DEFS.length;
   const testedCount = robotConfigs.filter(r => physicalRobotData[r.uuid]?.tested === true).length;
+
+  const [showFullMap, setShowFullMap] = useState(false);
 
   // A reflection beat on the first tree, shown right when leaving step 2 — see FirstTreeModal.
   const [firstTreeModalOpen, setFirstTreeModalOpen] = useState(false);
@@ -77,13 +106,15 @@ export function TimelinePanel() {
   // is actually corrected — otherwise it stayed clickable and just re-showed the same modal.
   const blockedByDataCheck = stepIndex === 1 && dataCheckFailed && hasWrongCriteria(robotConfigs, physicalRobotData);
 
-  // Live "ticks off" progress counter for the steps that have a measurable completion condition.
+  // Live "ticks off" progress counter for the steps that have a measurable completion condition,
+  // as a {current, total, label} triple rather than a preformatted string, so it can drive an
+  // actual bar rather than just a caption.
   const progress = (() => {
     if (stepIndex === 2 && robotConfigs.length > 0) {
-      return `${testedCount}/${robotConfigs.length} robots testés`;
+      return { current: testedCount, total: robotConfigs.length, label: 'robots testés' };
     }
     if (stepIndex === 4 && treeAccuracy && treeAccuracy.total > 0) {
-      return `${treeAccuracy.correct}/${treeAccuracy.total} robots correctement classés`;
+      return { current: treeAccuracy.correct, total: treeAccuracy.total, label: 'robots correctement classés' };
     }
     return null;
   })();
@@ -92,30 +123,65 @@ export function TimelinePanel() {
   const showCelebration = canAdvance && !isLastStep;
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* Step illustration — replaces the old phase accordion with a single image per step. */}
-      <img src={STEP_IMAGES[stepIndex]} alt={`Étape ${stepIndex}`} className="w-full h-auto rounded-lg" />
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className={`font-heading text-xs font-bold uppercase tracking-wide ${phase.accentText}`}>
+          {phase.label}
+        </span>
+        <span className="text-xs font-semibold text-gray-400">
+          Étape {stepIndex}/{STEP_DEFS.length}
+        </span>
+      </div>
+      <ProgressRail stepIndex={stepIndex} />
 
-      {/* Consigne, split into the pedagogical "why" and the one thing to do now. */}
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2 text-sm">
-          <span className="shrink-0 h-5 inline-flex items-center gap-1 whitespace-nowrap">
-            <Star width={14} height={14} />
-            <span className="font-semibold text-gray-800">Objectif</span>
-            <span>—</span>
-          </span>
-          <span className="text-gray-600">{current.objective}</span>
-        </div>
-        <div className="flex gap-2 text-sm">
-          <span className="shrink-0 h-5 inline-flex items-center gap-1 whitespace-nowrap">
-            <Play width={14} height={14} />
-            <span className="font-semibold text-gray-800">Action</span>
-            <span>—</span>
-          </span>
-          <span className="text-gray-600">{current.action}</span>
+      <button
+        onClick={() => setShowFullMap(v => !v)}
+        className="self-start inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-600"
+      >
+        {showFullMap ? <ChevronUp width={12} height={12} /> : <ChevronDown width={12} height={12} />}
+        Voir la carte de mission
+      </button>
+      <AnimatePresence>
+        {showFullMap && (
+          <motion.img
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            src={STEP_IMAGES[stepIndex]}
+            alt={`Étape ${stepIndex}`}
+            className="w-full h-auto rounded-lg overflow-hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Consigne, split into the pedagogical "why" (light caption) and the one thing to do now
+          (emphasised card) — the action is what a student needs first, the objective is context. */}
+      <div className="flex flex-col gap-1.5">
+        <span className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+          <Star width={12} height={12} />
+          <span className="font-medium">Objectif —</span> {current.objective}
+        </span>
+        <div className={`rounded-xl px-3 py-2.5 flex gap-2 ${phase.accentBgSoft}`}>
+          <Play width={14} height={14} className={`shrink-0 mt-0.5 ${phase.accentText}`} />
+          <div className="flex flex-col gap-1">
+            <span className={`font-heading text-xs font-bold uppercase tracking-wide ${phase.accentText}`}>Action</span>
+            <span className="text-sm text-gray-800">{current.action}</span>
+          </div>
         </div>
 
-        {progress && <span className="pl-7 text-xs font-semibold text-gray-800">{progress}</span>}
+        {progress && (
+          <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex-1 h-1.5 rounded-full bg-gray-150 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[var(--color-rpi-navy)] transition-all"
+                style={{ width: `${(progress.current / progress.total) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">
+              {progress.current}/{progress.total} {progress.label}
+            </span>
+          </div>
+        )}
 
         <AnimatePresence>
           {showCelebration && (
@@ -137,8 +203,14 @@ export function TimelinePanel() {
       )}
 
       {!isLastStep && (
-        <div className="self-start flex items-center gap-2">
-          <Button variant="primary" size="sm" isDisabled={!canAdvance || blockedByDataCheck} onPress={handleAdvance}>
+        <div className="sticky bottom-0 -mx-4 px-4 py-2 bg-gradient-to-t from-white via-white to-transparent self-start flex items-center gap-2 w-[calc(100%+2rem)]">
+          <Button
+            variant="primary"
+            size="sm"
+            className="!bg-[var(--color-rpi-navy)] hover:!bg-[var(--color-rpi-navy-dark)]"
+            isDisabled={!canAdvance || blockedByDataCheck}
+            onPress={handleAdvance}
+          >
             Étape suivante
             <ArrowRight />
           </Button>

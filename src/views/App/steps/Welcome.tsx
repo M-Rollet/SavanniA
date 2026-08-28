@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { Button } from '@heroui/react';
 import { ArrowRight, ArrowLeft, Gear, CheckShape, Ban } from '@gravity-ui/icons';
 import { useScenario } from '../ScenarioContext';
@@ -49,8 +50,7 @@ const BRIEF_PAGES: BriefPage[] = [
           </span>
           <span className="text-gray-600 font-normal">ou</span>
           <span className="flex items-center gap-1.5">
-            <Ban width={16} height={16} />
-            À réparer
+            <Ban width={16} height={16} />À réparer
           </span>
         </span>
       </>,
@@ -137,6 +137,9 @@ export function Welcome() {
                   commencer.
                 </p>
               )}
+              <Link to="/" className="text-black/60 text-sm mt-5 underline hover:text-black/80">
+                Guide de l'enseignant·e
+              </Link>
             </motion.div>
           )}
 

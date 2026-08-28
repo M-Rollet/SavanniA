@@ -213,238 +213,266 @@ export function DataTable() {
     return <p className="text-gray-300 text-sm">Aucun robot configuré</p>;
   }
 
+  const roleColumnCount = [showPrediction, showLiveTree, showResult].filter(Boolean).length;
+
   return (
-    <div ref={scrollRef} className="overflow-auto rounded-xl border border-gray-200">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="bg-gray-50">
-            <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-3 py-2 border border-gray-200">
-              Robot
-            </th>
-            {CRITERIA.map(c => (
-              <th
-                key={c}
-                className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 leading-tight border border-gray-200"
-              >
-                {CRITERIA_LABELS[c].map(word => (
-                  <span key={word} className="block">
-                    {word}
-                  </span>
-                ))}
+    <div className="flex flex-col gap-2 flex-1 min-h-0">
+      {roleColumnCount >= 2 && (
+        <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+          {showPrediction && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              Pronostic — ta réponse
+            </span>
+          )}
+          {showLiveTree && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              Prédiction — calcul de l'arbre
+            </span>
+          )}
+          {showResult && (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              Terrain — résultat réel
+            </span>
+          )}
+        </div>
+      )}
+      <div ref={scrollRef} className="overflow-auto rounded-lg border border-[var(--color-card-border)] flex-1 min-h-0">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-3 py-2 border border-gray-200">
+                Robot
               </th>
-            ))}
-            {showPrediction && (
-              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
-                Pronostic
-              </th>
-            )}
-            {showLiveTree && (
-              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
-                Prédiction
-              </th>
-            )}
-            {showResult && (
-              <th className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 border border-gray-200">
-                Terrain
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(row => {
-            // Steps 1-3: the prediction only appears once a robot has actually been run through
-            // the tree (same "tested" condition step 2 requires to advance) — it doesn't silently
-            // update from data typed straight into the table. From step 4 on it tracks live.
-            const canPredict = stepIndex > 3 || row.entry?.tested === true;
-            const predicted =
-              activeTree && canPredict ? classifyWithAlgoTree(activeTree, row.entry?.testResults ?? {}) : null;
-            const observed = row.entry?.observation?.category ?? undefined;
-            const mismatch = showResult && !!predicted && !!observed && predicted !== observed;
-            // Same condition as the tree's own colored path (see DecisionTree.tsx): stays lit in
-            // the robot's color from the moment its test lands here until a different robot gets
-            // selected, not just for the instant the flying dot arrives.
-            const isLiveResult = !!row.uuid && row.uuid === testResultRobot;
-            const rowTourAttr =
-              tourStep === 8 && row.uuid && row.uuid === tourTargetUuid
-                ? 'prediction-row'
-                : tourStep === 27 && row.uuid && row.uuid === controledRobot
-                ? 'tree-result-row'
-                : tourStep === TOUR4_STEP && mismatch
-                ? 'mismatched-row'
-                : undefined;
-            const notes = row.entry?.observation?.notes;
-            return (
-              <motion.tr
-                key={row.key}
-                data-tour={rowTourAttr}
-                initial={row.isExternal ? { opacity: 0, x: 24 } : false}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: ROW_DURATION_S, delay: (row.arrivalIndex ?? 0) * ROW_STAGGER_S }}
-                className="hover:bg-gray-50/60 transition-colors"
-              >
-                <td className="px-3 py-2 border border-gray-100">
-                  {notes ? (
-                    <Tooltip delay={200}>
-                      <Tooltip.Trigger className="flex items-center gap-2">
+              {CRITERIA.map(c => (
+                <th
+                  key={c}
+                  className="sticky top-0 z-10 bg-gray-50 text-left align-top font-medium text-gray-400 px-2 py-2 leading-tight border border-gray-200"
+                >
+                  {CRITERIA_LABELS[c].map(word => (
+                    <span key={word} className="block">
+                      {word}
+                    </span>
+                  ))}
+                </th>
+              ))}
+              {showPrediction && (
+                <th className="sticky top-0 z-10 bg-blue-100 text-left align-top font-bold text-blue-700 px-2 py-2 border border-gray-200">
+                  Pronostic
+                </th>
+              )}
+              {showLiveTree && (
+                <th className="sticky top-0 z-10 bg-amber-100 text-left align-top font-bold text-amber-700 px-2 py-2 border border-gray-200">
+                  Prédiction
+                </th>
+              )}
+              {showResult && (
+                <th className="sticky top-0 z-10 bg-emerald-100 text-left align-top font-bold text-emerald-700 px-2 py-2 border border-gray-200">
+                  Terrain
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => {
+              // Steps 1-3: the prediction only appears once a robot has actually been run through
+              // the tree (same "tested" condition step 2 requires to advance) — it doesn't silently
+              // update from data typed straight into the table. From step 4 on it tracks live.
+              const canPredict = stepIndex > 3 || row.entry?.tested === true;
+              const predicted =
+                activeTree && canPredict ? classifyWithAlgoTree(activeTree, row.entry?.testResults ?? {}) : null;
+              const observed = row.entry?.observation?.category ?? undefined;
+              const mismatch = showResult && !!predicted && !!observed && predicted !== observed;
+              // Same condition as the tree's own colored path (see DecisionTree.tsx): stays lit in
+              // the robot's color from the moment its test lands here until a different robot gets
+              // selected, not just for the instant the flying dot arrives.
+              const isLiveResult = !!row.uuid && row.uuid === testResultRobot;
+              const rowTourAttr =
+                tourStep === 8 && row.uuid && row.uuid === tourTargetUuid
+                  ? 'prediction-row'
+                  : tourStep === 27 && row.uuid && row.uuid === controledRobot
+                  ? 'tree-result-row'
+                  : tourStep === TOUR4_STEP && mismatch
+                  ? 'mismatched-row'
+                  : undefined;
+              const notes = row.entry?.observation?.notes;
+              return (
+                <motion.tr
+                  key={row.key}
+                  data-tour={rowTourAttr}
+                  initial={row.isExternal ? { opacity: 0, x: 24 } : false}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: ROW_DURATION_S, delay: (row.arrivalIndex ?? 0) * ROW_STAGGER_S }}
+                  className="hover:bg-gray-50/60 transition-colors"
+                >
+                  <td className="px-3 py-2 border border-gray-100">
+                    {notes ? (
+                      <Tooltip delay={200}>
+                        <Tooltip.Trigger className="flex items-center gap-2">
+                          {row.color ? (
+                            <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                          ) : (
+                            <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
+                          )}
+                          {row.label}
+                        </Tooltip.Trigger>
+                        <Tooltip.Content>Notes du terrain : {notes}</Tooltip.Content>
+                      </Tooltip>
+                    ) : (
+                      <span className="flex items-center gap-2">
                         {row.color ? (
                           <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
                         ) : (
                           <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
                         )}
                         {row.label}
-                      </Tooltip.Trigger>
-                      <Tooltip.Content>Notes du terrain : {notes}</Tooltip.Content>
-                    </Tooltip>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      {row.color ? (
-                        <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
-                      ) : (
-                        <span className="w-3 h-3 rounded-full shrink-0 border border-dashed border-gray-300" />
-                      )}
-                      {row.label}
-                    </span>
-                  )}
-                </td>
-                {CRITERIA.map(c => {
-                  const value = row.entry?.testResults[c];
-                  const isWrong = !!row.uuid && wrongCells?.has(`${row.uuid}-${c}`);
-                  const priorManualValue = row.uuid ? correctedCriteria[`${row.uuid}-${c}`] : undefined;
-                  const isCorrected = priorManualValue !== undefined;
-                  const editable = !!row.uuid && stepDef.features.dataEditable;
-                  const cellTourAttr =
-                    tourStep === 5 && c === 'light_working' && row.uuid === controledRobot
-                      ? 'selected-robot-light-cell'
-                      : undefined;
-                  const valueDisplay = (
-                    <motion.span
-                      key={value ?? 'empty'}
-                      initial={{ opacity: 0, scale: 0.5 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="inline-block"
-                    >
-                      {formatValue(c, value)}
-                    </motion.span>
-                  );
-                  return (
-                    <td
-                      key={c}
-                      data-cell={row.uuid ? `${row.uuid}-${c}` : undefined}
-                      data-tour={cellTourAttr}
-                      title={
-                        isCorrected
-                          ? `Tu avais noté «\u00A0${formatValue(c, priorManualValue)}\u00A0», le test mesure «\u00A0${formatValue(
-                              c,
-                              value
-                            )}\u00A0».`
-                          : undefined
-                      }
-                      className={`relative text-gray-600 overflow-hidden ${editable ? 'p-0' : 'px-2 py-2'} ${
-                        isWrong
-                          ? 'bg-yellow-100 border-2 border-yellow-300'
-                          : isCorrected
-                          ? 'border-2 border-amber-300'
-                          : 'border border-gray-100'
-                      }`}
-                    >
-                      {isCorrected && (
-                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      )}
-                      {editable ? (
-                        <Dropdown>
-                          <Dropdown.Trigger className="absolute inset-0 flex items-center w-full h-full px-2 py-2 text-left border-0 bg-transparent shadow-none ring-0 outline-none cursor-pointer hover:bg-blue-50 transition-colors">
-                            {valueDisplay}
-                          </Dropdown.Trigger>
-                          <Dropdown.Popover>
-                            <Dropdown.Menu onAction={key => setCellValue(row.uuid!, c, Number(key))}>
-                              {CRITERIA_OPTIONS[c].map(o => (
-                                <Dropdown.Item key={o.value} id={String(o.value)}>
-                                  {o.label}
-                                </Dropdown.Item>
-                              ))}
-                            </Dropdown.Menu>
-                          </Dropdown.Popover>
-                        </Dropdown>
-                      ) : (
-                        valueDisplay
-                      )}
-                    </td>
-                  );
-                })}
-                {showPrediction && (
-                  <td className="px-1 py-1.5 border border-gray-100">
-                    {row.uuid && canEditPrediction ? (
-                      <div className="node flex gap-1" onClick={e => e.stopPropagation()}>
-                        <button
-                          data-value="true"
-                          data-selected={row.entry?.prediction === 'ready' || undefined}
-                          onClick={() => setPrediction(row.uuid!, 'ready')}
-                          disabled={isPredictionLockedByTour(tourStep)}
-                          title="Prêt à partir"
-                          className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <CheckShape width={12} height={12} />
-                        </button>
-                        <button
-                          data-value="false"
-                          data-selected={row.entry?.prediction === 'repair' || undefined}
-                          onClick={() => setPrediction(row.uuid!, 'repair')}
-                          disabled={isPredictionLockedByTour(tourStep)}
-                          title="À réparer"
-                          className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Ban width={12} height={12} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="px-1">
-                        <ResultBadge category={row.entry?.prediction ?? undefined} />
                       </span>
                     )}
                   </td>
-                )}
-                {showLiveTree && (
-                  <td
-                    data-cell={row.uuid ? `${row.uuid}-prediction` : undefined}
-                    className={`px-2 py-2 overflow-hidden transition-[background-color,box-shadow] duration-300 ${
-                      isLiveResult
-                        ? 'border border-gray-100'
-                        : mismatch
-                        ? 'bg-red-100 border-2 border-red-300 text-gray-600'
-                        : 'border border-gray-100 text-gray-600'
-                    }`}
-                    style={{
-                      backgroundColor: isLiveResult ? row.color : undefined,
-                      // A colored inset ring instead of an actual table border: on a border-collapse
-                      // table, a real border here fights the shared 1px gray grid line with the
-                      // adjacent cell/row, which is what produced the ugly seam at the cell's edges.
-                      boxShadow: isLiveResult ? `inset 0 0 0 2px ${row.color}` : undefined,
-                    }}
-                  >
-                    <motion.span
-                      key={predicted ?? 'empty'}
-                      initial={{ opacity: 0, scale: 0.5 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.3 }}
-                      className="inline-block transition-colors duration-300"
+                  {CRITERIA.map(c => {
+                    const value = row.entry?.testResults[c];
+                    const isWrong = !!row.uuid && wrongCells?.has(`${row.uuid}-${c}`);
+                    const priorManualValue = row.uuid ? correctedCriteria[`${row.uuid}-${c}`] : undefined;
+                    const isCorrected = priorManualValue !== undefined;
+                    const editable = !!row.uuid && stepDef.features.dataEditable;
+                    const cellTourAttr =
+                      tourStep === 5 && c === 'light_working' && row.uuid === controledRobot
+                        ? 'selected-robot-light-cell'
+                        : undefined;
+                    const valueDisplay = (
+                      <motion.span
+                        key={value ?? 'empty'}
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3 }}
+                        className="inline-block"
+                      >
+                        {formatValue(c, value)}
+                      </motion.span>
+                    );
+                    return (
+                      <td
+                        key={c}
+                        data-cell={row.uuid ? `${row.uuid}-${c}` : undefined}
+                        data-tour={cellTourAttr}
+                        title={
+                          isCorrected
+                            ? `Tu avais noté «\u00A0${formatValue(
+                                c,
+                                priorManualValue
+                              )}\u00A0», le test mesure «\u00A0${formatValue(c, value)}\u00A0».`
+                            : undefined
+                        }
+                        className={`relative text-gray-600 overflow-hidden ${editable ? 'p-0' : 'px-2 py-2'} ${
+                          isWrong
+                            ? 'bg-yellow-100 border-2 border-yellow-300'
+                            : isCorrected
+                            ? 'border-2 border-amber-300'
+                            : 'border border-gray-100'
+                        }`}
+                      >
+                        {isCorrected && (
+                          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        )}
+                        {editable ? (
+                          <Dropdown>
+                            <Dropdown.Trigger className="absolute inset-0 flex items-center w-full h-full px-2 py-2 text-left border-0 bg-transparent shadow-none ring-0 outline-none cursor-pointer hover:bg-blue-50 transition-colors">
+                              {valueDisplay}
+                            </Dropdown.Trigger>
+                            <Dropdown.Popover>
+                              <Dropdown.Menu onAction={key => setCellValue(row.uuid!, c, Number(key))}>
+                                {CRITERIA_OPTIONS[c].map(o => (
+                                  <Dropdown.Item key={o.value} id={String(o.value)}>
+                                    {o.label}
+                                  </Dropdown.Item>
+                                ))}
+                              </Dropdown.Menu>
+                            </Dropdown.Popover>
+                          </Dropdown>
+                        ) : (
+                          valueDisplay
+                        )}
+                      </td>
+                    );
+                  })}
+                  {showPrediction && (
+                    <td className="px-1 py-1.5 border border-gray-100 bg-blue-50/60">
+                      {row.uuid && canEditPrediction ? (
+                        <div className="node flex gap-1" onClick={e => e.stopPropagation()}>
+                          <button
+                            data-value="true"
+                            data-selected={row.entry?.prediction === 'ready' || undefined}
+                            onClick={() => setPrediction(row.uuid!, 'ready')}
+                            disabled={isPredictionLockedByTour(tourStep)}
+                            title="Prêt à partir"
+                            className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <CheckShape width={12} height={12} />
+                          </button>
+                          <button
+                            data-value="false"
+                            data-selected={row.entry?.prediction === 'repair' || undefined}
+                            onClick={() => setPrediction(row.uuid!, 'repair')}
+                            disabled={isPredictionLockedByTour(tourStep)}
+                            title="À réparer"
+                            className="decision-btn flex items-center justify-center px-1.5 py-1 rounded-md border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Ban width={12} height={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="px-1">
+                          <ResultBadge category={row.entry?.prediction ?? undefined} />
+                        </span>
+                      )}
+                    </td>
+                  )}
+                  {showLiveTree && (
+                    <td
+                      data-cell={row.uuid ? `${row.uuid}-prediction` : undefined}
+                      className={`px-2 py-2 overflow-hidden transition-[background-color,box-shadow] duration-300 ${
+                        isLiveResult
+                          ? 'border border-gray-100'
+                          : mismatch
+                          ? 'bg-red-100 border-2 border-red-300 text-gray-600'
+                          : 'border border-gray-100 text-gray-600 bg-amber-50/60'
+                      }`}
+                      style={{
+                        backgroundColor: isLiveResult ? row.color : undefined,
+                        // A colored inset ring instead of an actual table border: on a border-collapse
+                        // table, a real border here fights the shared 1px gray grid line with the
+                        // adjacent cell/row, which is what produced the ugly seam at the cell's edges.
+                        boxShadow: isLiveResult ? `inset 0 0 0 2px ${row.color}` : undefined,
+                      }}
                     >
-                      <ResultBadge category={predicted ?? undefined} invert={isLiveResult} />
-                    </motion.span>
-                  </td>
-                )}
-                {showResult && (
-                  <td
-                    className={`px-2 py-2 ${mismatch ? 'bg-red-100 border-2 border-red-300' : 'border border-gray-100'}`}
-                  >
-                    <ResultBadge category={observed} />
-                  </td>
-                )}
-              </motion.tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      <motion.span
+                        key={predicted ?? 'empty'}
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3 }}
+                        className="inline-block transition-colors duration-300"
+                      >
+                        <ResultBadge category={predicted ?? undefined} invert={isLiveResult} />
+                      </motion.span>
+                    </td>
+                  )}
+                  {showResult && (
+                    <td
+                      className={`px-2 py-2 ${
+                        mismatch ? 'bg-red-100 border-2 border-red-300' : 'border border-gray-100 bg-emerald-50/60'
+                      }`}
+                    >
+                      <ResultBadge category={observed} />
+                    </td>
+                  )}
+                </motion.tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

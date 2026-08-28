@@ -22,58 +22,58 @@ export const eventsDefinition: EventDescription[] = [
 ];
 
 const ASEBA_CONSTANTS = {
-    // sequences
-    SEQ_NULL: 0,
-    SEQ_TEST_NOISE: 1,
-    SEQ_TEST_LIGHT_WORKING: 2,
-    SEQ_TEST_LIGHT_FAILING: 3,
-    SEQ_TEST_IR: 4,
-    SEQ_TEST_BATTERY: 5,
-    SEQ_MOVE: 7,
-    SEQ_IDENTIFY: 8,
-    SHORT_DIST_TICKS: 40,
-    SHORT_WAIT_TICKS: 5,
-    TICKS_BATTERY_FLASH: 5,
-    TICKS_FLICKER: 2,
-    TICKS_CHASE: 12,
+  // sequences
+  SEQ_NULL: 0,
+  SEQ_TEST_NOISE: 1,
+  SEQ_TEST_LIGHT_WORKING: 2,
+  SEQ_TEST_LIGHT_FAILING: 3,
+  SEQ_TEST_IR: 4,
+  SEQ_TEST_BATTERY: 5,
+  SEQ_MOVE: 7,
+  SEQ_IDENTIFY: 8,
+  SHORT_DIST_TICKS: 40,
+  SHORT_WAIT_TICKS: 5,
+  TICKS_BATTERY_FLASH: 5,
+  TICKS_FLICKER: 2,
+  TICKS_CHASE: 12,
 
-    // motion / line following
-    SPEED_NORMAL: 100,
-    MAX_SPEED: 160,
-    PCOEFF: 60,
-    ICOEFF: 33,
-    BLACK_TH: 300,
+  // motion / line following
+  SPEED_NORMAL: 100,
+  MAX_SPEED: 160,
+  PCOEFF: 60,
+  ICOEFF: 33,
+  BLACK_TH: 300,
 
-    // obstacle avoidance
-    OBST_ON: 1800,   // prox value that triggers avoidance (lower = react earlier)
-    OBST_BIAS: 30,   // pull toward obstacle side (higher = tighter orbit)
-    OBST_SHIFT: 7,   // repulsion = dot(prox, w) >> SHIFT (7 = twice as strong)
-    W0: -15,          // signed sensor weights, left → right;
-    W1: -20,          //   negative = steer right, positive = steer left
-    W2: 30,           //   center magnitude only — sign set at runtime by `side`
-    W3: 20,
-    W4: 15,
-    OBST_SEEN: 15,    // |r| above this = obstacle still in view
-    CLEAR_TICKS: 12,  // prox events (10Hz) of straight travel after losing sight (~1.2s ≈ 4cm at speed 80)
+  // obstacle avoidance
+  OBST_ON: 1800, // prox value that triggers avoidance (lower = react earlier)
+  OBST_BIAS: 30, // pull toward obstacle side (higher = tighter orbit)
+  OBST_SHIFT: 7, // repulsion = dot(prox, w) >> SHIFT (7 = twice as strong)
+  W0: -15, // signed sensor weights, left → right;
+  W1: -20, //   negative = steer right, positive = steer left
+  W2: 30, //   center magnitude only — sign set at runtime by `side`
+  W3: 20,
+  W4: 15,
+  OBST_SEEN: 15, // |r| above this = obstacle still in view
+  CLEAR_TICKS: 12, // prox events (10Hz) of straight travel after losing sight (~1.2s ≈ 4cm at speed 80)
 
-    // blind-mode collision: ir_working==0 still reads the real sensor, it just doesn't react to
-    // it for avoidance — a genuine impact drives the reading far above CRASH_ON, which is what
-    // triggers the crash (the accelerometer "tap" event was tried first but proved unreliable)
-    CRASH_ON: 4000,    // prox value that counts as "actually touching" the obstacle
-    CRASH_TICKS: 10,   // 10 × 50ms = 0.5s push after impact, then stop
+  // blind-mode collision: ir_working==0 still reads the real sensor, it just doesn't react to
+  // it for avoidance — a genuine impact drives the reading far above CRASH_ON, which is what
+  // triggers the crash (the accelerometer "tap" event was tried first but proved unreliable)
+  CRASH_ON: 4000, // prox value that counts as "actually touching" the obstacle
+  CRASH_TICKS: 10, // 10 × 50ms = 0.5s push after impact, then stop
 
-    BATT_STEP: 2,  // battery ramp, units per 50ms tick (192 units ≈ 4.8s; 4 → ~2.4s)
+  BATT_STEP: 2, // battery ramp, units per 50ms tick (192 units ≈ 4.8s; 4 → ~2.4s)
 
-    BEEP_FAIL_HZ: 250,  // flat low fail beeps
-    BEEP_OK_HZ: 400,    // first success note
-    BEEP_OK_STEP: 200,  // Hz added per note → 400, 600, 800
-    BEEP_LEN: 15,       // note length, 1/60s units (15 = 250ms)
-    BEEP_GAP: 7,        // timer0 ticks between notes (7 = 350ms)
+  BEEP_FAIL_HZ: 250, // flat low fail beeps
+  BEEP_OK_HZ: 400, // first success note
+  BEEP_OK_STEP: 200, // Hz added per note → 400, 600, 800
+  BEEP_LEN: 15, // note length, 1/60s units (15 = 250ms)
+  BEEP_GAP: 7, // timer0 ticks between notes (7 = 350ms)
 } as const satisfies Record<string, number>;
 
 const inlineConstants = (src: string): string =>
-  src.replace(/\b[A-Z][A-Z0-9_]*\b/g, (m) =>
-    m in ASEBA_CONSTANTS ? String(ASEBA_CONSTANTS[m]) : m
+  src.replace(/\b[A-Z][A-Z0-9_]*\b/g, m =>
+    m in ASEBA_CONSTANTS ? String(ASEBA_CONSTANTS[m as keyof typeof ASEBA_CONSTANTS]) : m
   );
 
 // upload inlineConstants(asebaSource) to the Thymio

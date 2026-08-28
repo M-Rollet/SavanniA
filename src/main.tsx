@@ -1,6 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import App from './views/App/App.tsx';
+import { TeacherPage } from './views/Teacher/TeacherPage.tsx';
 import './views/global-styles/index.css';
 
 // @heroui/react's toast queue wraps every update in document.startViewTransition(), which the
@@ -33,6 +35,16 @@ window.addEventListener('error', event => {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {/* HashRouter (not BrowserRouter): vite.config.mts uses a relative `base: './'`, which implies
+        the build can be served from any subpath without a fixed server rewrite rule. Hash-based
+        routes (/#/activite) work on any static host with no server config, whereas a clean
+        /activite URL would 404 on refresh unless the host is configured to fall back to
+        index.html for unknown paths. */}
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={<TeacherPage />} />
+        <Route path="/activite" element={<App />} />
+      </Routes>
+    </HashRouter>
   </React.StrictMode>
 );

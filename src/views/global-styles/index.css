@@ -8,10 +8,33 @@
   --color-green-light: #7CB68F;
   --color-green: #4E7B5A;
   --color-green-dark: #1A3E24;
+
+  /* Raspberry Pi Foundation's own confirmed brand colours (bits.raspberrypi.org style guide) —
+     used only on the teacher guide page, layered onto SavannIA's existing green/beige identity.
+     Per the real homepage layout: red is reserved for the hero band and section headings; solid
+     navy is the button colour throughout — red is never used for CTAs. */
+  --color-rpi-red: #C51A4A;
+  --color-rpi-mint: #6CC04A;
+  --color-rpi-navy: #23215C;
+  --color-rpi-navy-dark: #171442;
+  --color-rpi-rose-tint: #FBF1F3;
+
+  /* Warm off-white for cards sitting on the app's sand background — a step lighter than
+     --color-beige-light so cards read as distinct surfaces, without introducing a cold gray
+     that clashes with the rest of the app's warm palette. */
+  --color-card-sand: #FFFDF6;
+  --color-card-border: #EDE6CC;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+}
+
+/* Rounded, bold display face reserved for the teacher guide page (see index.html font link) —
+   deliberately scoped, not applied via :root, so the rest of the app keeps its own Inter-only
+   voice. */
+.font-heading {
+  font-family: 'Quicksand', Inter, system-ui, sans-serif;
 }

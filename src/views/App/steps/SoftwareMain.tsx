@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } fr
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@heroui/react';
 import { Toast } from '@heroui/react/toast';
-import { Sliders, ArrowRightArrowLeft, LogoDrawIo } from '@gravity-ui/icons';
+import { Sliders, ArrowRightArrowLeft, LogoDrawIo, Book, Eye } from '@gravity-ui/icons';
 import { ManualOperation } from '../components/ManualOperation';
 import { useScenario, ROBOT_COLORS, type RobotTeam } from '../ScenarioContext';
 import { TeamModal } from '../components/TeamModal';
@@ -30,6 +30,7 @@ import {
   type ExternalRobotEntry,
 } from './stepDefinitions';
 import { CORE_PROFILES, MIN_ROBOTS, QUESTION_SEQ_TYPE, getAnswerForQuestion } from '../robotProfiles';
+import { Link } from 'react-router-dom';
 
 const SEQ_TIMEOUT_MS = 10000;
 // Playful stand-in names for the two synthetic "new robots" (step 5) when their slot has no
@@ -124,8 +125,48 @@ export function SoftwareMain() {
     setTreeEditCount,
     step7DemoActive,
     aiActive,
+    goToStep,
   } = useScenario();
   const stepDef = useMemo(() => getStepDef(stepIndex), [stepIndex]);
+
+  // Resizable left/right split — the tree canvas can need much more room on some steps (step 6's
+  // 30-robot tree) than others, so a fixed ratio is either cramped or wasteful depending on the
+  // step. Persisted across sessions since it's a per-user layout preference, not scenario state.
+  const [leftPanelPercent, setLeftPanelPercent] = useState<number>(() => {
+    const saved = window.localStorage.getItem('layout:leftPanelPercent');
+    const parsed = saved ? parseFloat(saved) : NaN;
+    return Number.isFinite(parsed) ? parsed : 66.67;
+  });
+  const mainRowRef = useRef<HTMLDivElement>(null);
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    if (!isResizing) {
+      return;
+    }
+    const handleMove = (e: MouseEvent) => {
+      const row = mainRowRef.current;
+      if (!row) {
+        return;
+      }
+      const rect = row.getBoundingClientRect();
+      const percent = ((e.clientX - rect.left) / rect.width) * 100;
+      setLeftPanelPercent(Math.min(80, Math.max(35, percent)));
+    };
+    const handleUp = () => setIsResizing(false);
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isResizing]);
+
+  useEffect(() => {
+    window.localStorage.setItem('layout:leftPanelPercent', String(leftPanelPercent));
+  }, [leftPanelPercent]);
   const isFinalStep = stepDef.index === STEP_DEFS.length;
   const [finalTestReopenToken, setFinalTestReopenToken] = useState(0);
   const showTree = stepDef.features.treeVisible;
@@ -763,18 +804,41 @@ export function SoftwareMain() {
 
   return (
     <div className="flex flex-col h-screen" style={{ backgroundColor: 'var(--color-beige-light)' }}>
-      {/* ── Header ──────────────────────────────────────────── */}
-      <header className="flex items-center gap-4 px-6 py-2 border-b shrink-0">
-        <img src={logo} alt="SavannIA" className="h-8 mt-1" />
+      {/* ── Header / nav bar — same two-tier pattern as the teacher guide page ─ */}
+      <div className="h-2 shrink-0 bg-[var(--color-rpi-navy-dark)]" />
+      <header className="bg-white border-b border-gray-200 shrink-0">
+        {/* max-w-5xl mx-auto matches the teacher guide's header exactly, so the logo sits at the
+            same relative position on both pages instead of pinned to the raw viewport edge.
+            pr-16 on top of that reserves clearance for the fixed settings gear button (top-3
+            right-3), which the navy button would otherwise sit under. */}
+        <div className="max-w-5xl mx-auto pl-6 pr-16 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6">
+            <img src={logo} alt="SavannIA" className="h-7" />
+            <nav className="hidden sm:flex items-center gap-4">
+              <button
+                onClick={() => goToStep(0)}
+                className="text-sm font-medium text-gray-500 hover:text-[var(--color-rpi-navy)] transition-colors"
+              >
+                Accueil
+              </button>
+            </nav>
+          </div>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-rpi-navy)] hover:bg-[var(--color-rpi-navy-dark)] text-white font-bold text-sm px-5 py-2.5 transition-colors whitespace-nowrap shrink-0"
+          >
+            Guide de l'enseignant·e
+          </Link>
+        </div>
       </header>
 
       {/* ── Main ────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left — Programme (2/3) */}
+      <div className="flex flex-1 overflow-hidden" ref={mainRowRef}>
+        {/* Left — Programme */}
         <div
           data-tour="left-panel"
-          className="flex flex-col gap-4 p-4 border-r overflow-hidden"
-          style={{ flex: '4 1 0' }}
+          className="flex flex-col gap-4 p-4 overflow-hidden"
+          style={{ flex: `0 0 ${leftPanelPercent}%` }}
         >
           <div className="flex flex-col flex-1 min-h-0">
             {/* Action row */}
@@ -782,7 +846,7 @@ export function SoftwareMain() {
               {/* Tab pill */}
               <div
                 data-tour="robot-selector"
-                className="flex items-center gap-2 bg-gray-50 border border-b-0 border-gray-100 rounded-t-xl px-3 py-1"
+                className="flex items-center gap-2 bg-[var(--color-card-sand)] border border-b-0 border-[var(--color-card-border)] rounded-t-xl px-3 py-1"
               >
                 <img src={thymioIcon} alt="Robot&nbsp;:" className="h-10 mr-1 transition-all duration-300" />
 
@@ -852,7 +916,13 @@ export function SoftwareMain() {
               <div className="flex-1" />
 
               {stepDef.features.teamSwitch && (
-                <Button variant="outline" size="sm" isDisabled={testing} onPress={() => setTeamModalOpen(true)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  isDisabled={testing}
+                  onPress={() => setTeamModalOpen(true)}
+                  className="!border-[var(--color-rpi-navy)] !text-[var(--color-rpi-navy)] hover:!bg-[var(--color-rpi-navy)]/10"
+                >
                   <ArrowRightArrowLeft />
                   Tests terrain
                 </Button>
@@ -860,7 +930,12 @@ export function SoftwareMain() {
 
               {showToggle &&
                 (manualMode ? (
-                  <Button variant="primary" size="sm" onPress={() => setManualMode(false)} className="!bg-gray-700">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onPress={() => setManualMode(false)}
+                    className="!bg-[var(--color-rpi-navy)] hover:!bg-[var(--color-rpi-navy-dark)]"
+                  >
                     <LogoDrawIo />
                     Arbre de décision
                   </Button>
@@ -872,7 +947,7 @@ export function SoftwareMain() {
                       setTesting(false);
                       setManualMode(true);
                     }}
-                    className="!bg-gray-700"
+                    className="!bg-[var(--color-rpi-navy)] hover:!bg-[var(--color-rpi-navy-dark)]"
                   >
                     <Sliders />
                     Opération manuelle
@@ -923,34 +998,67 @@ export function SoftwareMain() {
           </div>
         </div>
 
-        {/* Right — Timeline + Data (1/3) */}
-        <div className="flex flex-col overflow-hidden" style={{ flex: '2 1 0' }}>
-          <div className="flex flex-col gap-3 px-5 py-4 border-b overflow-y-auto" style={{ flex: '1.15 1 0' }}>
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">
-              Journal de mission
-            </h3>
-            <TimelinePanel />
-            {isFinalStep && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="self-start"
-                onPress={() => setFinalTestReopenToken(t => t + 1)}
-              >
-                Test final
-              </Button>
-            )}
+        {/* Drag handle — widens the tree canvas on steps that need it (e.g. step 6's 30-robot
+            tree) without leaving the panels cramped/wasteful on steps that don't. */}
+        <div
+          onMouseDown={() => setIsResizing(true)}
+          className={`w-1.5 shrink-0 cursor-col-resize transition-colors ${
+            isResizing ? 'bg-[var(--color-rpi-navy)]' : 'bg-[var(--color-card-border)] hover:bg-[var(--color-rpi-navy)]'
+          }`}
+        />
+
+        {/* Right — Timeline + Data. Each gets its own elevated card (icon-badge header, sand
+            surface, border+shadow) on the app's beige background, instead of two plain text
+            labels sitting flush against the page. */}
+        <div
+          className="flex flex-col gap-3 p-3 overflow-hidden"
+          style={{ flex: '1 1 0', backgroundColor: 'var(--color-beige-light)' }}
+        >
+          <div
+            className="rounded-2xl bg-[var(--color-card-sand)] border border-[var(--color-card-border)] shadow-sm flex flex-col overflow-hidden shrink-0"
+            style={{ maxHeight: '55%' }}
+          >
+            <div className="flex items-center gap-2.5 px-4 py-3 shrink-0 border-b border-[var(--color-card-border)]">
+              <span className="w-7 h-7 rounded-full bg-[var(--color-rpi-red)] text-white flex items-center justify-center shrink-0">
+                <Book width={14} height={14} />
+              </span>
+              <h3 className="font-heading text-sm font-bold text-gray-800">Journal de mission</h3>
+            </div>
+            <div className="flex flex-col gap-3 px-4 py-4 overflow-y-auto">
+              <TimelinePanel />
+              {isFinalStep && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onPress={() => setFinalTestReopenToken(t => t + 1)}
+                >
+                  Test final
+                </Button>
+              )}
+            </div>
           </div>
 
-          <div data-tour="table-zone" className="flex flex-col gap-3 px-5 py-4 overflow-y-auto" style={{ flex: '1 1 0' }}>
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-400 shrink-0">Observations</h3>
-            {stepDef.features.dataTable ? (
-              <DataTable />
-            ) : (
-              <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
-                <p className="text-gray-300 text-sm">À définir</p>
-              </div>
-            )}
+          <div
+            data-tour="table-zone"
+            className="rounded-2xl bg-[var(--color-card-sand)] border border-[var(--color-card-border)] shadow-sm flex flex-col overflow-hidden"
+            style={{ flex: '1 1 0' }}
+          >
+            <div className="flex items-center gap-2.5 px-4 py-3 shrink-0 border-b border-[var(--color-card-border)]">
+              <span className="w-7 h-7 rounded-full bg-[var(--color-rpi-red)] text-white flex items-center justify-center shrink-0">
+                <Eye width={14} height={14} />
+              </span>
+              <h3 className="font-heading text-sm font-bold text-gray-800">Observations</h3>
+            </div>
+            <div className="flex flex-col gap-3 px-4 py-4 overflow-y-auto flex-1 min-h-0">
+              {stepDef.features.dataTable ? (
+                <DataTable />
+              ) : (
+                <div className="flex-1 min-h-0 rounded-xl border-2 border-dashed border-gray-200 flex items-center justify-center">
+                  <p className="text-gray-300 text-sm">À définir</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
